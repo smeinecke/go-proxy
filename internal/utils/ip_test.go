@@ -2,6 +2,7 @@ package utils
 
 import (
 	"net"
+	"net/netip"
 	"testing"
 )
 
@@ -28,6 +29,22 @@ func TestGenerateIPv4(t *testing.T) {
 		}
 
 		t.Logf("Generated IP: %v", ip)
+	}
+}
+
+func BenchmarkGenerateNetIPv6(b *testing.B) {
+	prefix := netip.MustParsePrefix("2001:db8::/32")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = GenerateNetIP(prefix)
+	}
+}
+
+func BenchmarkGenerateNetIPv4(b *testing.B) {
+	prefix := netip.MustParsePrefix("192.168.0.0/16")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = GenerateNetIP(prefix)
 	}
 }
 

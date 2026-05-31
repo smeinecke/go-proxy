@@ -99,3 +99,44 @@ func TestSplitParams(t *testing.T) {
 		t.Fatalf("expected john / session-abc123, got %s / %s", user, params)
 	}
 }
+
+func BenchmarkGetCredentials(b *testing.B) {
+	req := &http.Request{Header: make(map[string][]byte)}
+	req.SetHeader("Proxy-Authorization", []byte("Basic dXNlcjpwYXNz"))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = GetCredentials(req)
+	}
+}
+
+func BenchmarkSplitParams(b *testing.B) {
+	input := "john-session-abc123-country-uk-fallback-yes"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = SplitParams(input)
+	}
+}
+
+func BenchmarkGetParams(b *testing.B) {
+	input := "session-abc123-country-uk-fallback-yes"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = GetParams(input)
+	}
+}
+
+func BenchmarkVerifySessionValid(b *testing.B) {
+	result := map[string]string{ParamSession: "abc123456789"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = VerifySession(result)
+	}
+}
+
+func BenchmarkVerifySessionInvalid(b *testing.B) {
+	result := map[string]string{ParamSession: "bad"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = VerifySession(result)
+	}
+}

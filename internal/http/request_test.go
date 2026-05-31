@@ -417,3 +417,17 @@ func BenchmarkParseRequest(b *testing.B) {
 		req.Release()
 	}
 }
+
+func BenchmarkWriteTo(b *testing.B) {
+	request := "GET http://api.ipquery.io/?format=json HTTP/1.1\r\nHost: api.ipquery.io\r\nUser-Agent: curl/8.5.0\r\nAccept: */*\r\n\r\n"
+	reader := bufio.NewReader(strings.NewReader(request))
+	req, _ := ParseRequest(reader)
+	defer req.Release()
+
+	var buf bytes.Buffer
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		_, _ = req.WriteTo(&buf, nil)
+	}
+}

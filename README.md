@@ -157,60 +157,96 @@ curl -H "Authorization: Bearer change-me" http://127.0.0.1:9090/api/v1/status
 - `GET /api/v1/status` - server status and version metadata
 - `GET /api/v1/config` - safe non-secret configuration values
 
-## Benchmark
+## Benchmarks
 
-Benchmark can be run with `go test -bench=.`. Configuration should have `test_port` set to 8081 and credentials
-set to `username:password`.
+### Microbenchmarks
 
-**Benchmark results (AMD Ryzen 7 5800X, 8 cores / 16 threads):**
-```sh
-$ go run ./cmd/test/
-Running benchmark: 100 concurrency, 600 total requests
-Fastest:  295.753µs
-Slowest:  11.004797ms
-Average:  4.043747ms
-Total:    26.447877ms
-Throughput: 22686.13 req/s
+Run microbenchmarks for hot paths with memory profiling:
 
-Running benchmark: 250 concurrency, 1500 total requests
-Fastest:  278.033µs
-Slowest:  26.636579ms
-Average:  7.914034ms
-Total:    51.060407ms
-Throughput: 29376.97 req/s
+```bash
+go test -bench=. -benchmem ./internal/...
+```
 
-Running benchmark: 500 concurrency, 4000 total requests
-Fastest:  244.612µs
-Slowest:  73.656097ms
-Average:  14.75182ms
-Total:    122.857717ms
-Throughput: 32557.99 req/s
+Benchmarked paths:
+- `BenchmarkParseRequest` - HTTP request parsing
+- `BenchmarkWriteTo` - request forwarding serialization
+- `BenchmarkGetCredentials` - auth extraction from headers
+- `BenchmarkSplitParams` / `BenchmarkGetParams` - username parameter parsing
+- `BenchmarkMakeSessionKey` - session key generation
+- `BenchmarkSessionStoreGet` / `BenchmarkSessionStoreSet` - session cache
+- `BenchmarkRouterRouteNewIPv6` / `BenchmarkRouterRouteExistingSession` - routing
+- `BenchmarkResolverCachedLookup` / `BenchmarkResolverBlockedCheck` - DNS/resolver
 
-Running benchmark: 1000 concurrency, 6000 total requests
-Fastest:  762.657µs
-Slowest:  106.522048ms
-Average:  30.499627ms
-Total:    194.252712ms
-Throughput: 30887.60 req/s
+### End-to-end Load Benchmark
 
-Running benchmark: 2500 concurrency, 10000 total requests
-Fastest:  450.594µs
-Slowest:  298.337685ms
-Average:  67.126755ms
-Total:    307.735267ms
-Throughput: 32495.46 req/s
+`cmd/bench` runs duration-based load tests against a live proxy:
 
-Running benchmark: 5000 concurrency, 20000 total requests
-Fastest:  2.158011ms
-Slowest:  355.505753ms
-Average:  133.22096ms
-Total:    574.539255ms
-Throughput: 34810.50 req/s
+```bash
+# Start proxy with test_port enabled
+go run . &
 
-Running benchmark: 10000 concurrency, 40000 total requests
-Fastest:  2.154811ms
-Slowest:  1.167153127s
-Average:  287.193985ms
-Total:    1.241005216s
-Throughput: 32231.94 req/s
+# HTTP small requests
+go run ./cmd/bench \
+  -mode http-small \
+  -proxy http://username:password@127.0.0.1:8080 \
+  -target http://[::1]:8081 \
+  -concurrency 1000 \
+  -warmup 10s \
+  -duration 60s
+
+# CONNECT (HTTPS tunneling)
+go run ./cmd/bench \
+  -mode connect-small \
+  -proxy http://username:password@127.0.0.1:8080 \
+  -target "[::1]:8081" \
+  -concurrency 1000 \
+  -duration 60s
+
+# Large body (64KB) HTTP POST
+go run ./cmd/bench -mode http-large ...
+
+# Sticky session (reuse same session ID)
+go run ./cmd/bench -mode sticky-session ...
+
+# Random IP rotation (new session per request)
+go run ./cmd/bench -mode random-ip ...
+```
+
+Modes:
+- `http-small` - GET requests, small response
+- `http-large` - POST requests with 64KB body
+- `connect-small` - CONNECT tunnel establishment
+- `connect-large` - CONNECT with larger payload
+- `sticky-session` - reuse same session to test cache hit path
+- `random-ip` - force new IP generation per request
+
+Reported metrics:
+- total requests
+- success / error counts
+- throughput (req/s)
+- p50, p95, p99 latency
+- max latency
+
+### Comparing branches
+
+Use `benchstat` to compare microbenchmarks across branches:
+
+```bash
+# On old branch
+go test -bench=. -count=6 ./internal/... > old.txt
+
+# On new branch
+go test -bench=. -count=6 ./internal/... > new.txt
+
+# Compare
+go install golang.org/x/perf/cmd/benchstat@latest
+benchstat old.txt new.txt
+```
+
+For end-to-end comparison, run `cmd/bench` multiple times on each branch and compare medians:
+
+```bash
+for i in 1 2 3; do
+  go run ./cmd/bench -mode http-small -duration 30s 2>/dev/null | grep "Throughput"
+done
 ```
