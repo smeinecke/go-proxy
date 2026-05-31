@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"net/netip"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
