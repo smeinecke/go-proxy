@@ -23,7 +23,7 @@ func (p *ProxyHandler) HandleTunneling(w net.Conn, r *http.Request, st *stats.St
 		if st != nil {
 			st.AuthFailuresTotal.Add(1)
 		}
-		log.Error().Msg("Invalid credentials")
+		log.Warn().Msg("Invalid credentials")
 		proxy.WriteAuthRequired(w)
 		return -1
 	}

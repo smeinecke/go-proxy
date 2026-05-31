@@ -122,7 +122,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 			st.AuthFailuresTotal.Add(1)
 		}
 		conn.Write([]byte{0x01, 0x01})
-		log.Error().Msg("failed to verify auth")
+		log.Warn().Msg("failed to verify auth")
 		return -1
 	}
 	params := auth.GetParams(paramStr)

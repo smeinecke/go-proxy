@@ -22,7 +22,7 @@ func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 	if IsSocks(reader) {
 		written := p.HandleSocks(conn, reader, st)
 		if written == -1 {
-			log.Error().Int("worker_id", workerId).Msg("Request failed")
+			log.Warn().Int("worker_id", workerId).Msg("Request failed")
 		} else {
 			log.Trace().Int("worker_id", workerId).Int64("written", written).Msg("Request handled")
 		}
@@ -52,7 +52,7 @@ func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 		req.Release()
 
 		if written == -1 {
-			log.Error().Int("worker_id", workerId).Str("url", url).Msg("Request failed")
+			log.Warn().Int("worker_id", workerId).Str("url", url).Msg("Request failed")
 			break
 		}
 		log.Trace().Int("worker_id", workerId).Str("url", url).Int64("written", written).Msg("Request handled")
