@@ -24,10 +24,12 @@ var sessions = lru.NewTTLCache[string, net.IP](1024 * 1024)
 //   - If the user-provided fallback is "no", the fallback will be disabled.
 //   - If the resolved IP is not the same family as the local address, the fallback will be used
 //     if the fallback is enabled in the config.
-func GetDialer(ip, session, timeout, location, fallback string) (*net.Dialer, error) {
+func GetDialer(username, ip, session, timeout, location, fallback string) (*net.Dialer, error) {
 	var local net.IP
 	var err error
 	var ok bool
+
+	cacheKey := username + ":" + location + ":" + fallback + ":" + session
 
 	if session == "" {
 		local, err = utils.GenerateIP(GetCidrPrefix(location))
@@ -35,7 +37,7 @@ func GetDialer(ip, session, timeout, location, fallback string) (*net.Dialer, er
 			return nil, err
 		}
 	} else {
-		local, ok = sessions.Get(session)
+		local, ok = sessions.Get(cacheKey)
 		if !ok {
 			local, err = utils.GenerateIP(GetCidrPrefix(location))
 			if err != nil {
@@ -51,7 +53,7 @@ func GetDialer(ip, session, timeout, location, fallback string) (*net.Dialer, er
 				minutes = config.Get().MaxTimeout
 			}
 
-			sessions.Set(session, local, time.Duration(minutes)*time.Minute)
+			sessions.Set(cacheKey, local, time.Duration(minutes)*time.Minute)
 		}
 	}
 

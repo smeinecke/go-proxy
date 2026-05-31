@@ -15,6 +15,12 @@ import (
 	"github.com/vlourme/go-proxy/internal/sys"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	config := config.Get()
 
@@ -39,7 +45,7 @@ func main() {
 	}
 
 	if config.TestPort > 0 {
-		log.Info().Uint16("port", config.TestPort).Msg("Starting test server")
+		log.Info().Int("port", config.TestPort).Msg("Starting test server")
 		go func() {
 			server := &http.Server{
 				Addr: fmt.Sprintf("[::]:%d", config.TestPort),
@@ -56,7 +62,7 @@ func main() {
 	log.Info().Int("count", runtime.NumCPU()).Str("address", addr.String()).Msg("Starting listeners")
 	for idx := range runtime.NumCPU() {
 		go func(idx int) {
-			listener, err := reuseport.Listen("tcp", addr.String())
+			listener, err := reuseport.Listen(config.NetworkType, addr.String())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create listener")
 				return

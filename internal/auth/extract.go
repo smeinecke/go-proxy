@@ -15,26 +15,30 @@ const (
 	ParamFallback string = "fallback"
 )
 
-var sessionRegex = regexp.MustCompile(`^[a-zA-Z1-9]{6,24}$`)
+var sessionRegex = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
 
 // GetCredentials returns the username, password and params from the Proxy-Authorization header
 func GetCredentials(req *http.Request) (string, string, string) {
-	auth := string(req.Header["Proxy-Authorization"])
+	auth := string(req.GetHeader("Proxy-Authorization"))
 	if auth == "" {
 		return "", "", ""
 	}
 
-	auth = strings.TrimPrefix(auth, "Basic ")
-	if auth == "" {
+	fields := strings.Fields(auth)
+	if len(fields) != 2 || !strings.EqualFold(fields[0], "Basic") {
 		return "", "", ""
 	}
 
-	decoded, err := base64.StdEncoding.DecodeString(auth)
+	decoded, err := base64.StdEncoding.DecodeString(fields[1])
 	if err != nil {
 		return "", "", ""
 	}
 
-	username, password, _ := strings.Cut(string(decoded), ":")
+	username, password, ok := strings.Cut(string(decoded), ":")
+	if !ok {
+		return "", "", ""
+	}
+
 	username, params := SplitParams(username)
 	return username, password, params
 }

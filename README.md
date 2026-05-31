@@ -30,9 +30,10 @@ Example:
 listen_address: "::"
 listen_port: 8080
 debug_mode: false # Enable pretty-print logs, don't enable in production
-test_port: -1 # Enable a test server on port 8081 for benchmarking
+test_port: -1 # Enable a test server on port 8081 for benchmarking, -1 to disable
 network_type: "tcp6" # tcp = dual-stack, tcp6 = IPv6 only, tcp4 = IPv4 only
-max_timeout: 30 # Maximum timeout for a request in seconds
+max_timeout: 30 # Session cache TTL in minutes
+idle_timeout: 30 # Tunnel idle timeout in seconds
 auth:
   type: "credentials" # none, credentials, redis
   credentials:
@@ -40,12 +41,12 @@ auth:
     password: "password"
   redis:
     dsn: "redis://localhost:6379" # Will compare the username as key to the password
-bind_prefixes: # IPv4/IPv6 prefixes to bind to
-  - "2a14:dead:beef::1/48" # List of prefixes to bind to
+bind_prefixes: # IPv4/IPv6 prefixes to bind to (must be byte-aligned, e.g., /48, /56, /64)
+  - "2a14:dead:beef::1/48"
   - "2a14:dead:feed::1/48"
 enable_fallback: true # Fallback to IPv4 if the target does not match generated IP family above
 fallback_prefixes:
-  - "1.2.3.4/32" # List of prefixes to fallback to, should be IPv4
+  - "1.2.3.4/32" # List of prefixes to fallback to, must be IPv4 and byte-aligned
 located_prefixes:
   ch:
     - "2a14:dead:beef::/48"
@@ -56,6 +57,13 @@ replace_ips:
 deleted_headers: # List of headers to delete (HTTP only), this make proxy anonymous
   - "Proxy-Authorization"
   - "Proxy-Connection"
+dns:
+  type: "system" # system or custom
+  servers:
+    - "1.1.1.1"
+  timeout: 5
+blocked_cidrs: # Additional blocked CIDRs beyond default private/reserved ranges
+  - "10.0.0.0/8"
 ```
 
 ### Build
@@ -115,55 +123,55 @@ If you're domain resolve to `1.2.3.4`, it will be replaced with `2a14:dead:beef:
 Benchmark can be run with `go test -bench=.`. Configuration should have `test_port` set to 8081 and credentials
 set to `username:password`.
 
-**Benchmark results on 24-cores dedicated server:**
+**Benchmark results (AMD Ryzen 7 5800X, 8 cores / 16 threads):**
 ```sh
 $ go run ./cmd/test/
 Running benchmark: 100 concurrency, 600 total requests
-Fastest:  1.62083ms
-Slowest:  56.380979ms
-Average:  20.106005ms
-Total:    128.167636ms
-Throughput: 4681.37 req/s
+Fastest:  295.753µs
+Slowest:  11.004797ms
+Average:  4.043747ms
+Total:    26.447877ms
+Throughput: 22686.13 req/s
 
 Running benchmark: 250 concurrency, 1500 total requests
-Fastest:  2.491974ms
-Slowest:  96.381628ms
-Average:  26.371493ms
-Total:    169.393879ms
-Throughput: 8855.10 req/s
+Fastest:  278.033µs
+Slowest:  26.636579ms
+Average:  7.914034ms
+Total:    51.060407ms
+Throughput: 29376.97 req/s
 
 Running benchmark: 500 concurrency, 4000 total requests
-Fastest:  2.485129ms
-Slowest:  148.471635ms
-Average:  41.59583ms
-Total:    357.834735ms
-Throughput: 11178.34 req/s
+Fastest:  244.612µs
+Slowest:  73.656097ms
+Average:  14.75182ms
+Total:    122.857717ms
+Throughput: 32557.99 req/s
 
 Running benchmark: 1000 concurrency, 6000 total requests
-Fastest:  1.481635ms
-Slowest:  220.899026ms
-Average:  68.733736ms
-Total:    437.22757ms
-Throughput: 13722.83 req/s
+Fastest:  762.657µs
+Slowest:  106.522048ms
+Average:  30.499627ms
+Total:    194.252712ms
+Throughput: 30887.60 req/s
 
 Running benchmark: 2500 concurrency, 10000 total requests
-Fastest:  29.777132ms
-Slowest:  487.61035ms
-Average:  164.518955ms
-Total:    721.735415ms
-Throughput: 13855.49 req/s
+Fastest:  450.594µs
+Slowest:  298.337685ms
+Average:  67.126755ms
+Total:    307.735267ms
+Throughput: 32495.46 req/s
 
 Running benchmark: 5000 concurrency, 20000 total requests
-Fastest:  970.738µs
-Slowest:  729.66545ms
-Average:  332.911955ms
-Total:    1.48569428s
-Throughput: 13461.72 req/s
+Fastest:  2.158011ms
+Slowest:  355.505753ms
+Average:  133.22096ms
+Total:    574.539255ms
+Throughput: 34810.50 req/s
 
 Running benchmark: 10000 concurrency, 40000 total requests
-Fastest:  67.003994ms
-Slowest:  1.244676058s
-Average:  661.01839ms
-Total:    2.919776624s
-Throughput: 13699.68 req/s
+Fastest:  2.154811ms
+Slowest:  1.167153127s
+Average:  287.193985ms
+Total:    1.241005216s
+Throughput: 32231.94 req/s
 ```

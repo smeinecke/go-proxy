@@ -137,6 +137,7 @@ func HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 	}
 
 	dialer, err := nio.GetDialer(
+		username,
 		ip,
 		params[auth.ParamSession],
 		params[auth.ParamTimeout],
@@ -159,7 +160,7 @@ func HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 
 	writeStatus(conn, RepSuccess)
 
-	return nio.CopyOnce(destConn, conn, time.Duration(config.Get().MaxTimeout)*time.Second)
+	return nio.CopyBidirectional(destConn, conn, time.Duration(config.Get().IdleTimeout)*time.Second)
 }
 
 // writeStatus writes a standardized SOCKS5 reply to the client

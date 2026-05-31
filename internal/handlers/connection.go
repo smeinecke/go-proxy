@@ -43,19 +43,20 @@ func HandleConnection(workerId int, conn net.Conn) {
 			written = HandleHTTP(conn, reader, req)
 		}
 
+		url := string(req.URL)
 		req.Release()
 
 		if written == -1 {
 			log.Error().
 				Int("worker_id", workerId).
-				Str("url", string(req.URL)).
+				Str("url", url).
 				Msg("Request failed")
 
 			break
 		} else {
 			log.Trace().
 				Int("worker_id", workerId).
-				Str("url", string(req.URL)).
+				Str("url", url).
 				Int64("written", written).
 				Msg("Request handled")
 		}

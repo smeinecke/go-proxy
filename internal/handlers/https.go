@@ -14,15 +14,9 @@ import (
 // HandleTunneling handles the HTTPS tunneling request
 func HandleTunneling(w net.Conn, r *http.Request) int64 {
 	username, password, encodedParams := auth.GetCredentials(r)
-	if username == "" {
-		log.Error().Msg("No username provided")
-		w.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"))
-		return -1
-	}
-
 	if !auth.Verify(username, password) {
 		log.Error().Msg("Invalid credentials")
-		w.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"))
+		w.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n"))
 		return -1
 	}
 
@@ -36,6 +30,7 @@ func HandleTunneling(w net.Conn, r *http.Request) int64 {
 	}
 
 	dialer, err := nio.GetDialer(
+		username,
 		ip,
 		params[auth.ParamSession],
 		params[auth.ParamTimeout],
@@ -54,7 +49,8 @@ func HandleTunneling(w net.Conn, r *http.Request) int64 {
 		w.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\n"))
 		return -1
 	}
+	defer destConn.Close()
 
 	w.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
-	return nio.CopyOnce(w, destConn, time.Duration(config.Get().MaxTimeout)*time.Second)
+	return nio.CopyBidirectional(w, destConn, time.Duration(config.Get().IdleTimeout)*time.Second)
 }

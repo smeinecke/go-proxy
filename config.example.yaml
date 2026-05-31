@@ -1,9 +1,10 @@
 listen_address: "::"
 listen_port: 8080
 debug_mode: false
-test_port: 0
+test_port: -1
 network_type: "tcp6"
-max_timeout: 30
+max_timeout: 30 # session cache TTL in minutes
+idle_timeout: 30 # tunnel idle timeout in seconds
 auth:
   type: "credentials"
   credentials:
@@ -27,3 +28,10 @@ replace_ips:
 deleted_headers:
   - "Proxy-Authorization"
   - "Proxy-Connection"
+dns:
+  type: "system" # system or custom
+  servers:
+    - "1.1.1.1"
+  timeout: 5
+blocked_cidrs: # additional blocked CIDRs beyond default private ranges
+  - "10.0.0.0/8"

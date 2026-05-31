@@ -17,15 +17,19 @@ func HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request) int64 {
 	username, password, encodedParams := auth.GetCredentials(r)
 	if !auth.Verify(username, password) {
 		log.Error().Msg("Invalid credentials")
-		w.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\n\r\n"))
+		w.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n"))
 		return -1
 	}
 
 	params := auth.GetParams(encodedParams)
 
 	for _, header := range config.Get().DeletedHeaders {
-		delete(r.Header, header)
+		r.DeleteHeader(header)
 	}
+
+	// Always strip proxy-specific headers for security
+	r.DeleteHeader("Proxy-Authorization")
+	r.DeleteHeader("Proxy-Connection")
 
 	ip, err := nio.ResolveHostname(string(r.Host))
 	if err != nil {
@@ -35,6 +39,7 @@ func HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request) int64 {
 	}
 
 	dialer, err := nio.GetDialer(
+		username,
 		ip,
 		params[auth.ParamSession],
 		params[auth.ParamTimeout],
@@ -62,5 +67,5 @@ func HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request) int64 {
 		return -1
 	}
 
-	return nio.CopyOnce(w, destConn, time.Duration(config.Get().MaxTimeout)*time.Second)
+	return nio.CopyBidirectional(w, destConn, time.Duration(config.Get().IdleTimeout)*time.Second)
 }
