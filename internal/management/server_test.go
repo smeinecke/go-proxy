@@ -371,8 +371,8 @@ func TestSessionsIPv6InsideBindPrefix(t *testing.T) {
 	if result["source_ip"] != "2001:db8::1" {
 		t.Fatalf("expected 2001:db8::1, got %v", result["source_ip"])
 	}
-	if result["proxy_username"] != "john-session-abc123456" {
-		t.Fatalf("expected john-session-abc123456, got %v", result["proxy_username"])
+	if result["proxy_username"] != "john-session-abc123456-fallback-no" {
+		t.Fatalf("expected john-session-abc123456-fallback-no, got %v", result["proxy_username"])
 	}
 }
 
@@ -496,17 +496,8 @@ func TestSessionsTTLAboveMax(t *testing.T) {
 	s := newTestServerWithRouter()
 	s.appCfg.MaxTimeout = 5
 	resp := postSessions(t, s, `{"username": "john", "source_ip": "2001:db8::1", "session": "abc123456", "ttl_minutes": 999}`)
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
-	}
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("failed to decode: %v", err)
-	}
-	// TTL should be clamped to max (5 minutes = 300 seconds)
-	if result["expires_at"] == "" {
-		t.Fatalf("expected expires_at to be set")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
@@ -523,5 +514,65 @@ func TestSessionsBlockedIP(t *testing.T) {
 	resp := postSessions(t, s, `{"username": "john", "source_ip": "10.0.0.1", "session": "abc123456"}`)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionsUsernameWithHyphen(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john-doe", "source_ip": "2001:db8::1", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionsUsernameWithColon(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john:doe", "source_ip": "2001:db8::1", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionsUsernameEmptyWhitespace(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "   ", "source_ip": "2001:db8::1", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionsBracketedIPv6(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john", "source_ip": "[2001:db8::1]", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if result["source_ip"] != "2001:db8::1" {
+		t.Fatalf("expected 2001:db8::1, got %v", result["source_ip"])
+	}
+}
+
+func TestSessionsProxyUsernameIncludesFallbackNo(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john", "source_ip": "2001:db8::1", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	expected := "john-session-abc123456-fallback-no"
+	if result["proxy_username"] != expected {
+		t.Fatalf("expected proxy_username %s, got %v", expected, result["proxy_username"])
+	}
+	if result["fallback"] != "no" {
+		t.Fatalf("expected fallback no, got %v", result["fallback"])
 	}
 }

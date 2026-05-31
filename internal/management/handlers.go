@@ -135,10 +135,21 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if req.SourceIP == "" {
 		req.SourceIP = req.IP
 	}
+	// Normalize bracketed IPv6
+	req.SourceIP = strings.Trim(req.SourceIP, "[]")
 
-	if req.Username == "" {
+	if req.Username == "" || strings.TrimSpace(req.Username) == "" {
 		writeError(w, http.StatusBadRequest, "bad_request", "username is required")
 		return
+	}
+	if strings.ContainsAny(req.Username, "-:") {
+		writeError(w, http.StatusBadRequest, "bad_request", "username must not contain '-' or ':'")
+		return
+	}
+
+	// Pre-created sessions default to fallback=no for exact-IP semantics
+	if req.Fallback == "" {
+		req.Fallback = "no"
 	}
 
 	// Validate or generate session
@@ -225,9 +236,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		if ttl <= 0 {
 			ttl = 5 * time.Minute
 		}
-	}
-	if ttl > maxTTL && maxTTL > 0 {
-		ttl = maxTTL
+	} else if maxTTL > 0 && ttl > maxTTL {
+		writeError(w, http.StatusBadRequest, "bad_request", "ttl_minutes exceeds max_timeout")
+		return
 	}
 
 	s.sessionStore.Set(cacheKey, ip, ttl)
