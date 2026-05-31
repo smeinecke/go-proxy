@@ -95,21 +95,25 @@ func (r *Router) Route(req RouteRequest) (RouteResult, error) {
 		}
 	}
 
-	// Fallback: if target family differs from source, use a fallback IPv4 prefix.
-	if req.Fallback != "no" && r.enableFallback && req.TargetIP.Is4() != source.Is4() {
-		if len(r.fallbackPrefixes) > 0 {
+	// Fallback: if target family differs from source, use a fallback prefix.
+	if req.TargetIP.Is4() != source.Is4() {
+		if req.Fallback == "no" {
+			return RouteResult{}, fmt.Errorf("address family mismatch: target %s and source %s have different families, fallback disabled by request", req.TargetIP, source)
+		}
+		if r.enableFallback && len(r.fallbackPrefixes) > 0 {
 			fallbackPrefix := r.fallbackPrefixes[utils.RandomInt(len(r.fallbackPrefixes))]
 			fallbackIP, err := utils.GenerateNetIP(fallbackPrefix)
 			if err != nil {
 				return RouteResult{}, fmt.Errorf("generate fallback IP: %w", err)
 			}
-			log.Warn().Str("prefix", fallbackPrefix.String()).Msg("IPv4 target, using fallback prefix")
+			log.Warn().Str("prefix", fallbackPrefix.String()).Msg("Address family mismatch, using fallback prefix")
 			return RouteResult{
 				SourceIP: fallbackIP,
 				Mode:     "fallback",
 				Dialer:   newDialer(fallbackIP.AsSlice()),
 			}, nil
 		}
+		return RouteResult{}, fmt.Errorf("address family mismatch: target %s and source %s have different families; enable_fallback=%v fallback_prefixes=%d", req.TargetIP, source, r.enableFallback, len(r.fallbackPrefixes))
 	}
 
 	return RouteResult{

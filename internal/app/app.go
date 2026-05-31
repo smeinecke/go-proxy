@@ -89,7 +89,7 @@ func New(cfg *config.Config, version, commit, date string) (*App, error) {
 		replaces = append(replaces, routing.ReplacementRule{Prefix: prefix, IP: ip})
 	}
 
-	sessionStore := routing.NewSessionStore(1024 * 1024)
+	sessionStore := routing.NewSessionStore(64 * 1024)
 
 	router := routing.NewRouter(
 		sessionStore,
