@@ -1,6 +1,6 @@
 module github.com/vlourme/go-proxy
 
-go 1.26.3
+go 1.25.0
 
 require (
 	github.com/libp2p/go-reuseport v0.4.0
