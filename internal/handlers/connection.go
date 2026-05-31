@@ -12,12 +12,13 @@ import (
 // HandleConnection handles an incoming connection using the handler's dependencies.
 func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 	defer conn.Close()
-	p.Stats.RequestsTotal.Add(1)
+	st := p.Stats.Shard(workerId)
+	st.RequestsTotal.Add(1)
 
 	reader := bufio.NewReader(conn)
 
 	if IsSocks(reader) {
-		written := p.HandleSocks(conn, reader)
+		written := p.HandleSocks(conn, reader, st)
 		if written == -1 {
 			log.Error().Int("worker_id", workerId).Msg("Request failed")
 		} else {
@@ -34,11 +35,11 @@ func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 
 		var written int64
 		if string(req.Method) == http.MethodConnect {
-			p.Stats.ConnectTotal.Add(1)
-			written = p.HandleTunneling(conn, req)
+			st.ConnectTotal.Add(1)
+			written = p.HandleTunneling(conn, req, st)
 		} else {
-			p.Stats.HTTPRequestsTotal.Add(1)
-			written = p.HandleHTTP(conn, reader, req)
+			st.HTTPRequestsTotal.Add(1)
+			written = p.HandleHTTP(conn, reader, req, st)
 		}
 
 		url := string(req.URL)

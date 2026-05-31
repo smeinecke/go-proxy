@@ -20,7 +20,7 @@ type Server struct {
 	appCfg       *config.Config
 	http         *http.Server
 	listener     net.Listener
-	stats        *stats.Stats
+	stats        *stats.Container
 	sessionStore routing.SessionStore
 	router       *routing.Router
 	version      string
@@ -39,7 +39,7 @@ func New(appCfg *config.Config, version, commit, date string) *Server {
 }
 
 // SetStats attaches a stats collector to the management server.
-func (s *Server) SetStats(st *stats.Stats) {
+func (s *Server) SetStats(st *stats.Container) {
 	s.stats = st
 }
 

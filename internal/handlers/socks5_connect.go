@@ -16,6 +16,7 @@ import (
 	"github.com/vlourme/go-proxy/internal/nio"
 	"github.com/vlourme/go-proxy/internal/proxy"
 	"github.com/vlourme/go-proxy/internal/routing"
+	"github.com/vlourme/go-proxy/internal/stats"
 )
 
 // SOCKS constants
@@ -70,7 +71,7 @@ func IsSocks(buf *bufio.Reader) bool {
 }
 
 // HandleSocks handles the SOCKS protocol
-func (p *ProxyHandler) HandleSocks(conn net.Conn, buf *bufio.Reader) int64 {
+func (p *ProxyHandler) HandleSocks(conn net.Conn, buf *bufio.Reader, st *stats.Stats) int64 {
 	ver, err := buf.ReadByte()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to read version")
@@ -82,11 +83,11 @@ func (p *ProxyHandler) HandleSocks(conn net.Conn, buf *bufio.Reader) int64 {
 		return -1
 	}
 
-	return p.HandleSocks5(conn, buf)
+	return p.HandleSocks5(conn, buf, st)
 }
 
 // HandleSocks5 handles the SOCKS5 protocol
-func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
+func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.Stats) int64 {
 	methodsCount, err := buf.ReadByte()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to read methods count")
@@ -116,7 +117,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 
 	username, paramStr := auth.SplitParams(username)
 	if !p.Authenticator.Verify(username, password) {
-		p.Stats.AuthFailuresTotal.Add(1)
+		st.AuthFailuresTotal.Add(1)
 		conn.Write([]byte{0x01, 0x01})
 		log.Error().Msg("failed to verify auth")
 		return -1
@@ -131,7 +132,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 	}
 
 	addrType := hdr[3]
-	target, err := p.parseAtyp(addrType, buf)
+	target, err := p.parseAtyp(addrType, buf, st)
 	if err != nil {
 		proxy.WriteSocks5Status(conn, RepAddrTypeNotSupported)
 		log.Error().Err(err).Msg("failed to parse address")
@@ -147,7 +148,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 		Fallback: params[auth.ParamFallback],
 	})
 	if err != nil {
-		p.Stats.DialFailuresTotal.Add(1)
+		st.DialFailuresTotal.Add(1)
 		proxy.WriteSocks5Status(conn, RepGeneralFailure)
 		log.Error().Err(err).Msg("failed to route")
 		return -1
@@ -155,7 +156,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 
 	destConn, err := route.Dialer.Dial("tcp", target.Addr())
 	if err != nil {
-		p.Stats.DialFailuresTotal.Add(1)
+		st.DialFailuresTotal.Add(1)
 		proxy.WriteSocks5Status(conn, RepHostUnreachable)
 		log.Error().Err(err).Msg("failed to dial")
 		return -1
@@ -164,12 +165,12 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 
 	proxy.WriteSocks5Status(conn, RepSuccess)
 	bytes := nio.CopyBidirectional(destConn, conn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	p.Stats.BytesTotal.Add(uint64(bytes))
+	st.BytesTotal.Add(uint64(bytes))
 	return bytes
 }
 
 // parseAtyp parses the address type and returns a Target.
-func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader) (proxy.Target, error) {
+func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader, st *stats.Stats) (proxy.Target, error) {
 	switch atyp {
 	case AtypIPv4:
 		addr := make([]byte, 6)
@@ -196,7 +197,7 @@ func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader) (proxy.Target, er
 		ip, err := p.Resolver.Resolve(context.Background(), host)
 		if err != nil {
 			if err == routing.ErrBlocked {
-				p.Stats.BlockedTotal.Add(1)
+				st.BlockedTotal.Add(1)
 			}
 			return proxy.Target{}, fmt.Errorf("resolve hostname: %w", err)
 		}

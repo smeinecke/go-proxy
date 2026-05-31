@@ -12,6 +12,6 @@ type ProxyHandler struct {
 	Authenticator auth.Authenticator
 	Router        *routing.Router
 	Resolver      *routing.Resolver
-	Stats         *stats.Stats
+	Stats         *stats.Container
 	Config        *config.Config
 }

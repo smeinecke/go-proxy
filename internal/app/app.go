@@ -29,7 +29,7 @@ type App struct {
 	Router        *routing.Router
 	Resolver      *routing.Resolver
 	SessionStore  routing.SessionStore
-	Stats         *stats.Stats
+	Stats         *stats.Container
 	Management    *management.Server
 
 	listeners []net.Listener
@@ -120,7 +120,7 @@ func New(cfg *config.Config, version, commit, date string) (*App, error) {
 		Router:        router,
 		Resolver:      resolver,
 		SessionStore:  sessionStore,
-		Stats:         &stats.Stats{},
+		Stats:         stats.NewContainer(runtime.NumCPU()),
 		version:       version,
 		commit:        commit,
 		date:          date,

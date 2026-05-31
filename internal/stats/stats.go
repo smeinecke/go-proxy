@@ -14,16 +14,43 @@ type Stats struct {
 	BytesTotal        atomic.Uint64
 }
 
-// Snapshot returns a non-atomic copy of the current stats.
-func (s *Stats) Snapshot() map[string]uint64 {
+// Container holds N independent Stats shards to avoid cache-line contention.
+type Container struct {
+	shards []Stats
+}
+
+// NewContainer creates a Container with the given number of shards.
+func NewContainer(numShards int) *Container {
+	return &Container{shards: make([]Stats, numShards)}
+}
+
+// Shard returns the stats shard for the given worker index.
+func (c *Container) Shard(idx int) *Stats {
+	return &c.shards[idx%len(c.shards)]
+}
+
+// Snapshot returns the summed values of all shards.
+func (c *Container) Snapshot() map[string]uint64 {
+	var requests, connect, httpReqs, authFail, dnsFail, blocked, dialFail, bytesTotal uint64
+	for i := range c.shards {
+		s := &c.shards[i]
+		requests += s.RequestsTotal.Load()
+		connect += s.ConnectTotal.Load()
+		httpReqs += s.HTTPRequestsTotal.Load()
+		authFail += s.AuthFailuresTotal.Load()
+		dnsFail += s.DNSFailuresTotal.Load()
+		blocked += s.BlockedTotal.Load()
+		dialFail += s.DialFailuresTotal.Load()
+		bytesTotal += s.BytesTotal.Load()
+	}
 	return map[string]uint64{
-		"requests_total":      s.RequestsTotal.Load(),
-		"connect_total":       s.ConnectTotal.Load(),
-		"http_requests_total": s.HTTPRequestsTotal.Load(),
-		"auth_failures_total": s.AuthFailuresTotal.Load(),
-		"dns_failures_total":  s.DNSFailuresTotal.Load(),
-		"blocked_total":       s.BlockedTotal.Load(),
-		"dial_failures_total": s.DialFailuresTotal.Load(),
-		"bytes_total":         s.BytesTotal.Load(),
+		"requests_total":      requests,
+		"connect_total":       connect,
+		"http_requests_total": httpReqs,
+		"auth_failures_total": authFail,
+		"dns_failures_total":  dnsFail,
+		"blocked_total":       blocked,
+		"dial_failures_total": dialFail,
+		"bytes_total":         bytesTotal,
 	}
 }

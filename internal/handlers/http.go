@@ -14,13 +14,14 @@ import (
 	"github.com/vlourme/go-proxy/internal/nio"
 	"github.com/vlourme/go-proxy/internal/proxy"
 	"github.com/vlourme/go-proxy/internal/routing"
+	"github.com/vlourme/go-proxy/internal/stats"
 )
 
 // HandleHTTP handles the HTTP request.
-func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request) int64 {
+func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request, st *stats.Stats) int64 {
 	username, password, encodedParams := auth.GetCredentials(r)
 	if !p.Authenticator.Verify(username, password) {
-		p.Stats.AuthFailuresTotal.Add(1)
+		st.AuthFailuresTotal.Add(1)
 		log.Error().Msg("Invalid credentials")
 		proxy.WriteAuthRequired(w)
 		return -1
@@ -43,9 +44,9 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	ip, err := p.Resolver.Resolve(context.Background(), host)
 	if err != nil {
 		if err == routing.ErrBlocked {
-			p.Stats.BlockedTotal.Add(1)
+			st.BlockedTotal.Add(1)
 		}
-		p.Stats.DNSFailuresTotal.Add(1)
+		st.DNSFailuresTotal.Add(1)
 		log.Error().Err(err).Str("host", host).Msg("Error resolving hostname")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -60,7 +61,7 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 		Fallback: params[auth.ParamFallback],
 	})
 	if err != nil {
-		p.Stats.DialFailuresTotal.Add(1)
+		st.DialFailuresTotal.Add(1)
 		log.Error().Err(err).Msg("Error routing")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -68,7 +69,7 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 
 	destConn, err := route.Dialer.Dial("tcp", net.JoinHostPort(ip.String(), strconv.Itoa(port)))
 	if err != nil {
-		p.Stats.DialFailuresTotal.Add(1)
+		st.DialFailuresTotal.Add(1)
 		log.Error().Err(err).Msg("Error dialing")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -83,7 +84,7 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	}
 
 	bytes := nio.CopyBidirectional(w, destConn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	p.Stats.BytesTotal.Add(uint64(bytes))
+	st.BytesTotal.Add(uint64(bytes))
 	return bytes
 }
 

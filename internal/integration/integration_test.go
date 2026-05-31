@@ -93,7 +93,7 @@ func newTestProxyHandler(t *testing.T, cfg *config.Config) *handlers.ProxyHandle
 		Authenticator: authenticator,
 		Router:        router,
 		Resolver:      resolver,
-		Stats:         &stats.Stats{},
+		Stats:         stats.NewContainer(1),
 		Config:        cfg,
 	}
 }
