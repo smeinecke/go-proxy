@@ -60,7 +60,7 @@ func (s *Server) buildRouter() http.Handler {
 	mux.HandleFunc("/api/v1/config", s.authMiddleware(requireGET(s.handleConfig)))
 	mux.HandleFunc("/api/v1/stats", s.authMiddleware(requireGET(s.handleStats)))
 	mux.HandleFunc("/api/v1/sessions", s.authMiddleware(s.handleSessions))
-	mux.HandleFunc("/", s.handleNotFound)
+	mux.HandleFunc("/", s.authMiddleware(s.handleNotFound))
 	return mux
 }
 

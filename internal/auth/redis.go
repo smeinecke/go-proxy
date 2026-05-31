@@ -2,28 +2,20 @@ package auth
 
 import (
 	"context"
-	"sync"
+	"fmt"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog/log"
-	"github.com/vlourme/go-proxy/internal/config"
 )
 
-var once sync.Once
-var client *redis.Client
-
-func GetRedisClient() *redis.Client {
-	once.Do(func() {
-		opt, err := redis.ParseURL(config.Get().Auth.Redis.DSN)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to parse Redis URL")
-		}
-		client = redis.NewClient(opt)
-		_, err = client.Ping(context.Background()).Result()
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to ping Redis")
-		}
-	})
-
-	return client
+// NewRedisClient creates a new Redis client from a DSN and verifies connectivity.
+func NewRedisClient(dsn string) (*redis.Client, error) {
+	opt, err := redis.ParseURL(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse Redis DSN: %w", err)
+	}
+	client := redis.NewClient(opt)
+	if _, err := client.Ping(context.Background()).Result(); err != nil {
+		return nil, fmt.Errorf("ping Redis: %w", err)
+	}
+	return client, nil
 }

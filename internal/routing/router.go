@@ -59,7 +59,7 @@ func NewRouter(
 func (r *Router) Route(req RouteRequest) (RouteResult, error) {
 	prefix := r.selectPrefix(req.Location)
 
-	cacheKey := SessionKey(req.Username + ":" + req.Location + ":" + req.Fallback + ":" + req.Session)
+	cacheKey := MakeSessionKey(req.Username, req.Location, req.Fallback, req.Session)
 
 	var source netip.Addr
 	var mode string
@@ -129,6 +129,40 @@ func (r *Router) selectPrefix(location string) netip.Prefix {
 		return r.bindPrefixes[utils.RandomInt(len(r.bindPrefixes))]
 	}
 	return prefixes[utils.RandomInt(len(prefixes))]
+}
+
+// IsIPInPool reports whether ip lies within any configured bind prefix.
+func (r *Router) IsIPInPool(ip netip.Addr) bool {
+	for _, p := range r.bindPrefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsIPInLocatedPrefix reports whether ip lies within the located prefixes for location.
+func (r *Router) IsIPInLocatedPrefix(location string, ip netip.Addr) bool {
+	prefixes, ok := r.locatedPrefixes[location]
+	if !ok {
+		return false
+	}
+	for _, p := range prefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsIPInFallbackPrefix reports whether ip lies within any fallback prefix.
+func (r *Router) IsIPInFallbackPrefix(ip netip.Addr) bool {
+	for _, p := range r.fallbackPrefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // newDialer creates a net.Dialer bound to the given local IP.

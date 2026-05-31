@@ -109,7 +109,10 @@ func New(cfg *config.Config, version, commit, date string) (*App, error) {
 		replaces,
 	)
 
-	authenticator := auth.NewAuthenticator(cfg)
+	authenticator, err := auth.NewAuthenticator(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("auth setup: %w", err)
+	}
 
 	app := &App{
 		Config:        cfg,
@@ -176,15 +179,17 @@ func (a *App) Run(ctx context.Context) error {
 		Config:        a.Config,
 	}
 
+	for range runtime.NumCPU() {
+		listener, err := reuseport.Listen(a.Config.NetworkType, addr.String())
+		if err != nil {
+			return fmt.Errorf("create listener: %w", err)
+		}
+		a.listeners = append(a.listeners, listener)
+	}
+
 	for idx := range runtime.NumCPU() {
 		go func(idx int) {
-			listener, err := reuseport.Listen(a.Config.NetworkType, addr.String())
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create listener")
-				return
-			}
-			a.listeners = append(a.listeners, listener)
-
+			listener := a.listeners[idx]
 			for {
 				select {
 				case <-ctx.Done():
@@ -212,6 +217,9 @@ func (a *App) Run(ctx context.Context) error {
 		l.Close()
 	}
 
+	if ctx.Err() == context.Canceled {
+		return nil
+	}
 	return ctx.Err()
 }
 

@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/netip"
+	"regexp"
 	"time"
 
 	"github.com/vlourme/go-proxy/internal/routing"
 )
+
+var sessionRegex = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -78,30 +81,62 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Username   string `json:"username"`
-		Session  string `json:"session"`
-		IP       string `json:"ip"`
-		TTL      int    `json:"ttl_minutes"`
-		Location string `json:"location"`
+		Session    string `json:"session"`
+		SourceIP   string `json:"source_ip"`
+		IP         string `json:"ip"` // deprecated alias for source_ip
+		TTL        int    `json:"ttl_minutes"`
+		Location   string `json:"location"`
+		Fallback   string `json:"fallback"`
+		Overwrite  bool   `json:"overwrite"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
 		return
 	}
 
-	if req.Session == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", "session is required")
+	// Support both source_ip and the deprecated ip field
+	if req.SourceIP == "" {
+		req.SourceIP = req.IP
+	}
+
+	if req.Username == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "username is required")
+		return
+	}
+	if req.Session == "" || !sessionRegex.MatchString(req.Session) {
+		writeError(w, http.StatusBadRequest, "bad_request", "session must be 6-24 alphanumeric characters")
 		return
 	}
 
 	var ip netip.Addr
 	var err error
-	if req.IP != "" {
-		ip, err = netip.ParseAddr(req.IP)
+	if req.SourceIP != "" {
+		ip, err = netip.ParseAddr(req.SourceIP)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "bad_request", "invalid IP address")
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid source_ip address")
 			return
 		}
+
+		// Validate IP against configured pools
+		if ip.Is6() {
+			if req.Location != "" {
+				if !s.router.IsIPInLocatedPrefix(req.Location, ip) {
+					writeError(w, http.StatusBadRequest, "bad_request", "source_ip not in located_prefixes for location")
+					return
+				}
+			} else if !s.router.IsIPInPool(ip) {
+				writeError(w, http.StatusBadRequest, "bad_request", "source_ip not in allowed bind_prefixes")
+				return
+			}
+		} else if ip.Is4() {
+			// IPv4 is only allowed from fallback_prefixes when fallback is enabled
+			if !s.appCfg.EnableFallback || !s.router.IsIPInFallbackPrefix(ip) {
+				writeError(w, http.StatusBadRequest, "bad_request", "IPv4 source_ip must be within fallback_prefixes and fallback must be enabled")
+				return
+			}
+		}
 	} else {
+		// Auto-generate an IP from the pool
 		route, err := s.router.Route(routing.RouteRequest{
 			Username: req.Username,
 			Location: req.Location,
@@ -113,6 +148,16 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		ip = route.SourceIP
 	}
 
+	cacheKey := routing.MakeSessionKey(req.Username, req.Location, req.Fallback, req.Session)
+
+	// Check for duplicate unless overwrite is requested
+	if !req.Overwrite {
+		if _, exists := s.sessionStore.Get(cacheKey); exists {
+			writeError(w, http.StatusConflict, "conflict", "session already exists")
+			return
+		}
+	}
+
 	ttl := time.Duration(req.TTL) * time.Minute
 	if ttl <= 0 {
 		ttl = 5 * time.Minute
@@ -121,13 +166,12 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		ttl = time.Duration(s.appCfg.MaxTimeout) * time.Minute
 	}
 
-	cacheKey := routing.SessionKey(req.Username + ":" + req.Location + "::" + req.Session)
 	s.sessionStore.Set(cacheKey, ip, ttl)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"session":   req.Session,
 		"username":  req.Username,
-		"ip":        ip.String(),
+		"source_ip": ip.String(),
 		"ttl_secs":  int(ttl.Seconds()),
 		"mode":      "explicit",
 	})

@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/vlourme/go-proxy/internal/config"
 )
 
@@ -13,19 +15,23 @@ type Authenticator interface {
 }
 
 // NewAuthenticator returns the appropriate authenticator for the config.
-func NewAuthenticator(cfg *config.Config) Authenticator {
+func NewAuthenticator(cfg *config.Config) (Authenticator, error) {
 	switch cfg.Auth.Type {
 	case config.AuthTypeNone:
-		return &NoneAuthenticator{}
+		return &NoneAuthenticator{}, nil
 	case config.AuthTypeCredentials:
 		return &CredentialsAuthenticator{
 			Username: cfg.Auth.Credentials.Username,
 			Password: cfg.Auth.Credentials.Password,
-		}
+		}, nil
 	case config.AuthTypeRedis:
-		return &RedisAuthenticator{}
+		client, err := NewRedisClient(cfg.Auth.Redis.DSN)
+		if err != nil {
+			return nil, fmt.Errorf("redis auth: %w", err)
+		}
+		return &RedisAuthenticator{client: client}, nil
 	default:
-		return &NoneAuthenticator{}
+		return &NoneAuthenticator{}, nil
 	}
 }
 
@@ -53,14 +59,15 @@ func (a *CredentialsAuthenticator) Verify(username, password string) bool {
 }
 
 // RedisAuthenticator checks credentials against Redis.
-type RedisAuthenticator struct{}
+type RedisAuthenticator struct {
+	client *redis.Client
+}
 
 func (a *RedisAuthenticator) Verify(username, password string) bool {
 	if username == "" || password == "" {
 		return false
 	}
-	client := GetRedisClient()
-	val, err := client.Get(context.Background(), username).Result()
+	val, err := a.client.Get(context.Background(), username).Result()
 	if err != nil {
 		return false
 	}

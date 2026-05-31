@@ -10,6 +10,11 @@ import (
 // SessionKey uniquely identifies a session.
 type SessionKey string
 
+// MakeSessionKey builds a canonical session key from components.
+func MakeSessionKey(username, location, fallback, session string) SessionKey {
+	return SessionKey(username + ":" + location + ":" + fallback + ":" + session)
+}
+
 // SessionStore caches source IP addresses by session key.
 type SessionStore interface {
 	Get(key SessionKey) (netip.Addr, bool)

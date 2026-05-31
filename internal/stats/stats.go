@@ -11,8 +11,7 @@ type Stats struct {
 	DNSFailuresTotal  atomic.Uint64
 	BlockedTotal      atomic.Uint64
 	DialFailuresTotal atomic.Uint64
-	BytesUp           atomic.Uint64
-	BytesDown         atomic.Uint64
+	BytesTotal        atomic.Uint64
 }
 
 // Snapshot returns a non-atomic copy of the current stats.
@@ -25,7 +24,6 @@ func (s *Stats) Snapshot() map[string]uint64 {
 		"dns_failures_total":  s.DNSFailuresTotal.Load(),
 		"blocked_total":       s.BlockedTotal.Load(),
 		"dial_failures_total": s.DialFailuresTotal.Load(),
-		"bytes_up":            s.BytesUp.Load(),
-		"bytes_down":          s.BytesDown.Load(),
+		"bytes_total":         s.BytesTotal.Load(),
 	}
 }

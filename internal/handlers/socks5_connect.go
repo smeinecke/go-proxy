@@ -164,7 +164,7 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 
 	proxy.WriteSocks5Status(conn, RepSuccess)
 	bytes := nio.CopyBidirectional(destConn, conn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	p.Stats.BytesUp.Add(uint64(bytes))
+	p.Stats.BytesTotal.Add(uint64(bytes))
 	return bytes
 }
 
@@ -195,6 +195,9 @@ func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader) (proxy.Target, er
 		port := binary.BigEndian.Uint16(domainBuf[domainLen:])
 		ip, err := p.Resolver.Resolve(context.Background(), host)
 		if err != nil {
+			if err == routing.ErrBlocked {
+				p.Stats.BlockedTotal.Add(1)
+			}
 			return proxy.Target{}, fmt.Errorf("resolve hostname: %w", err)
 		}
 		return proxy.Target{Host: host, IP: ip, Port: port}, nil

@@ -29,6 +29,8 @@ func main() {
 	defer stop()
 
 	if err := application.Run(ctx); err != nil {
-		log.Fatal().Err(err).Msg("app stopped")
+		if err != context.Canceled {
+			log.Fatal().Err(err).Msg("app stopped")
+		}
 	}
 }

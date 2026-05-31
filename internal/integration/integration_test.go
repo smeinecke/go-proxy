@@ -66,7 +66,7 @@ func setupFullConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-func newTestProxyHandler(cfg *config.Config) *handlers.ProxyHandler {
+func newTestProxyHandler(t *testing.T, cfg *config.Config) *handlers.ProxyHandler {
 	bindPrefix := netip.MustParsePrefix("127.0.0.1/32")
 	sessionStore := routing.NewSessionStore(1024)
 	router := routing.NewRouter(
@@ -85,8 +85,12 @@ func newTestProxyHandler(cfg *config.Config) *handlers.ProxyHandler {
 		nil,
 		nil,
 	)
+	authenticator, err := auth.NewAuthenticator(cfg)
+	if err != nil {
+		t.Fatalf("failed to create authenticator: %v", err)
+	}
 	return &handlers.ProxyHandler{
-		Authenticator: auth.NewAuthenticator(cfg),
+		Authenticator: authenticator,
 		Router:        router,
 		Resolver:      resolver,
 		Stats:         &stats.Stats{},
@@ -178,7 +182,7 @@ func TestProxyHTTPForwarding(t *testing.T) {
 		t.Fatalf("failed to set test config: %v", err)
 	}
 
-	handler := newTestProxyHandler(cfg)
+	handler := newTestProxyHandler(t, cfg)
 
 	// Start a simple origin HTTP server.
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +249,7 @@ func TestProxyAndManagementTogether(t *testing.T) {
 		t.Fatalf("failed to set test config: %v", err)
 	}
 
-	handler := newTestProxyHandler(cfg)
+	handler := newTestProxyHandler(t, cfg)
 
 	// Start origin server.
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

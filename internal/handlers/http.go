@@ -42,6 +42,9 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	host := string(r.Host)
 	ip, err := p.Resolver.Resolve(context.Background(), host)
 	if err != nil {
+		if err == routing.ErrBlocked {
+			p.Stats.BlockedTotal.Add(1)
+		}
 		p.Stats.DNSFailuresTotal.Add(1)
 		log.Error().Err(err).Str("host", host).Msg("Error resolving hostname")
 		proxy.WriteError(w, 500, "Internal Server Error")
@@ -80,7 +83,7 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	}
 
 	bytes := nio.CopyBidirectional(w, destConn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	p.Stats.BytesUp.Add(uint64(bytes))
+	p.Stats.BytesTotal.Add(uint64(bytes))
 	return bytes
 }
 
