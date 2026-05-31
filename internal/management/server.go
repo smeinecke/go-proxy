@@ -11,16 +11,21 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/vlourme/go-proxy/internal/config"
+	"github.com/vlourme/go-proxy/internal/routing"
+	"github.com/vlourme/go-proxy/internal/stats"
 )
 
 // Server is the management API HTTP server.
 type Server struct {
-	appCfg   *config.Config
-	http     *http.Server
-	listener net.Listener
-	version  string
-	commit   string
-	date     string
+	appCfg       *config.Config
+	http         *http.Server
+	listener     net.Listener
+	stats        *stats.Stats
+	sessionStore routing.SessionStore
+	router       *routing.Router
+	version      string
+	commit       string
+	date         string
 }
 
 // New creates a new management server.
@@ -33,11 +38,28 @@ func New(appCfg *config.Config, version, commit, date string) *Server {
 	}
 }
 
-func (s *Server) router() http.Handler {
+// SetStats attaches a stats collector to the management server.
+func (s *Server) SetStats(st *stats.Stats) {
+	s.stats = st
+}
+
+// SetSessionStore attaches a session store to the management server.
+func (s *Server) SetSessionStore(store routing.SessionStore) {
+	s.sessionStore = store
+}
+
+// SetRouter attaches a router to the management server.
+func (s *Server) SetRouter(r *routing.Router) {
+	s.router = r
+}
+
+func (s *Server) buildRouter() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.authMiddleware(requireGET(s.handleHealthz)))
 	mux.HandleFunc("/api/v1/status", s.authMiddleware(requireGET(s.handleStatus)))
 	mux.HandleFunc("/api/v1/config", s.authMiddleware(requireGET(s.handleConfig)))
+	mux.HandleFunc("/api/v1/stats", s.authMiddleware(requireGET(s.handleStats)))
+	mux.HandleFunc("/api/v1/sessions", s.authMiddleware(s.handleSessions))
 	mux.HandleFunc("/", s.handleNotFound)
 	return mux
 }
@@ -48,7 +70,7 @@ func (s *Server) Start() error {
 	addr := net.JoinHostPort(s.appCfg.Management.ListenAddress, strconv.Itoa(s.appCfg.Management.Port))
 	s.http = &http.Server{
 		Addr:              addr,
-		Handler:           s.router(),
+		Handler:           s.buildRouter(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

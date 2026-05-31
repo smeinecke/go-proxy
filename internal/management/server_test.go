@@ -46,7 +46,7 @@ func TestHealthz(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
-	s.router().ServeHTTP(w, req)
+	s.buildRouter().ServeHTTP(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -166,7 +166,7 @@ func TestNotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
-	s.router().ServeHTTP(w, req)
+	s.buildRouter().ServeHTTP(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusNotFound {
@@ -182,7 +182,7 @@ func TestHealthzMissingToken(t *testing.T) {
 	s := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
-	s.router().ServeHTTP(w, req)
+	s.buildRouter().ServeHTTP(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -195,7 +195,7 @@ func TestStatusMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
-	s.router().ServeHTTP(w, req)
+	s.buildRouter().ServeHTTP(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {

@@ -9,24 +9,20 @@ import (
 	httpParse "github.com/vlourme/go-proxy/internal/http"
 )
 
-func HandleConnection(workerId int, conn net.Conn) {
+// HandleConnection handles an incoming connection using the handler's dependencies.
+func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 	defer conn.Close()
+	p.Stats.RequestsTotal.Add(1)
 
 	reader := bufio.NewReader(conn)
 
 	if IsSocks(reader) {
-		written := HandleSocks(conn, reader)
+		written := p.HandleSocks(conn, reader)
 		if written == -1 {
-			log.Error().
-				Int("worker_id", workerId).
-				Msg("Request failed")
+			log.Error().Int("worker_id", workerId).Msg("Request failed")
 		} else {
-			log.Trace().
-				Int("worker_id", workerId).
-				Int64("written", written).
-				Msg("Request handled")
+			log.Trace().Int("worker_id", workerId).Int64("written", written).Msg("Request handled")
 		}
-
 		return
 	}
 
@@ -38,27 +34,20 @@ func HandleConnection(workerId int, conn net.Conn) {
 
 		var written int64
 		if string(req.Method) == http.MethodConnect {
-			written = HandleTunneling(conn, req)
+			p.Stats.ConnectTotal.Add(1)
+			written = p.HandleTunneling(conn, req)
 		} else {
-			written = HandleHTTP(conn, reader, req)
+			p.Stats.HTTPRequestsTotal.Add(1)
+			written = p.HandleHTTP(conn, reader, req)
 		}
 
 		url := string(req.URL)
 		req.Release()
 
 		if written == -1 {
-			log.Error().
-				Int("worker_id", workerId).
-				Str("url", url).
-				Msg("Request failed")
-
+			log.Error().Int("worker_id", workerId).Str("url", url).Msg("Request failed")
 			break
-		} else {
-			log.Trace().
-				Int("worker_id", workerId).
-				Str("url", url).
-				Int64("written", written).
-				Msg("Request handled")
 		}
+		log.Trace().Int("worker_id", workerId).Str("url", url).Int64("written", written).Msg("Request handled")
 	}
 }

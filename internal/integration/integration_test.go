@@ -9,13 +9,17 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/vlourme/go-proxy/internal/auth"
 	"github.com/vlourme/go-proxy/internal/config"
 	"github.com/vlourme/go-proxy/internal/handlers"
 	"github.com/vlourme/go-proxy/internal/management"
+	"github.com/vlourme/go-proxy/internal/routing"
+	"github.com/vlourme/go-proxy/internal/stats"
 )
 
 func getFreePort(t *testing.T) int {
@@ -60,6 +64,34 @@ func setupFullConfig(t *testing.T) *config.Config {
 		Token:         "integration-test-token",
 	}
 	return cfg
+}
+
+func newTestProxyHandler(cfg *config.Config) *handlers.ProxyHandler {
+	bindPrefix := netip.MustParsePrefix("127.0.0.1/32")
+	sessionStore := routing.NewSessionStore(1024)
+	router := routing.NewRouter(
+		sessionStore,
+		[]netip.Prefix{bindPrefix},
+		nil,
+		map[string][]netip.Prefix{},
+		30*time.Minute,
+		cfg.EnableFallback,
+	)
+	resolver := routing.NewResolver(
+		cfg.DNS.Type,
+		cfg.DNS.Servers,
+		5*time.Second,
+		cfg.DebugMode,
+		nil,
+		nil,
+	)
+	return &handlers.ProxyHandler{
+		Authenticator: auth.NewAuthenticator(cfg),
+		Router:        router,
+		Resolver:      resolver,
+		Stats:         &stats.Stats{},
+		Config:        cfg,
+	}
 }
 
 func TestManagementAPIReachable(t *testing.T) {
@@ -146,6 +178,8 @@ func TestProxyHTTPForwarding(t *testing.T) {
 		t.Fatalf("failed to set test config: %v", err)
 	}
 
+	handler := newTestProxyHandler(cfg)
+
 	// Start a simple origin HTTP server.
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/test" {
@@ -169,7 +203,7 @@ func TestProxyHTTPForwarding(t *testing.T) {
 			if err != nil {
 				return
 			}
-			go handlers.HandleConnection(0, conn)
+			go handler.HandleConnection(0, conn)
 		}
 	}()
 
@@ -211,6 +245,8 @@ func TestProxyAndManagementTogether(t *testing.T) {
 		t.Fatalf("failed to set test config: %v", err)
 	}
 
+	handler := newTestProxyHandler(cfg)
+
 	// Start origin server.
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("proxy works"))
@@ -230,7 +266,7 @@ func TestProxyAndManagementTogether(t *testing.T) {
 			if err != nil {
 				return
 			}
-			go handlers.HandleConnection(0, conn)
+			go handler.HandleConnection(0, conn)
 		}
 	}()
 

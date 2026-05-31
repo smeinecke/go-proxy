@@ -3,17 +3,19 @@ package handlers
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
-	"strconv"
+	"net/netip"
 	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/vlourme/go-proxy/internal/auth"
-	"github.com/vlourme/go-proxy/internal/config"
 	"github.com/vlourme/go-proxy/internal/nio"
+	"github.com/vlourme/go-proxy/internal/proxy"
+	"github.com/vlourme/go-proxy/internal/routing"
 )
 
 // SOCKS constants
@@ -68,7 +70,7 @@ func IsSocks(buf *bufio.Reader) bool {
 }
 
 // HandleSocks handles the SOCKS protocol
-func HandleSocks(conn net.Conn, buf *bufio.Reader) int64 {
+func (p *ProxyHandler) HandleSocks(conn net.Conn, buf *bufio.Reader) int64 {
 	ver, err := buf.ReadByte()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to read version")
@@ -80,11 +82,11 @@ func HandleSocks(conn net.Conn, buf *bufio.Reader) int64 {
 		return -1
 	}
 
-	return HandleSocks5(conn, buf)
+	return p.HandleSocks5(conn, buf)
 }
 
 // HandleSocks5 handles the SOCKS5 protocol
-func HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
+func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 	methodsCount, err := buf.ReadByte()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to read methods count")
@@ -98,23 +100,23 @@ func HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 	}
 
 	if !bytes.Contains(methods, []byte{AuthUsernamePass}) {
-		writeStatus(conn, RepGeneralFailure)
+		proxy.WriteSocks5Status(conn, RepGeneralFailure)
 		log.Error().Msg("socks5: auth required")
 		return -1
 	}
 
-	// Select username/password auth
 	conn.Write([]byte{Version5, AuthUsernamePass})
 
 	username, password, err := parseSocksAuth(buf)
 	if err != nil {
-		conn.Write([]byte{0x01, 0x01}) // auth version, failure
+		conn.Write([]byte{0x01, 0x01})
 		log.Error().Err(err).Msg("failed to parse auth")
 		return -1
 	}
 
 	username, paramStr := auth.SplitParams(username)
-	if !auth.Verify(username, password) {
+	if !p.Authenticator.Verify(username, password) {
+		p.Stats.AuthFailuresTotal.Add(1)
 		conn.Write([]byte{0x01, 0x01})
 		log.Error().Msg("failed to verify auth")
 		return -1
@@ -129,48 +131,86 @@ func HandleSocks5(conn net.Conn, buf *bufio.Reader) int64 {
 	}
 
 	addrType := hdr[3]
-	ip, port, err := parseAtyp(addrType, buf)
+	target, err := p.parseAtyp(addrType, buf)
 	if err != nil {
-		writeStatus(conn, RepAddrTypeNotSupported)
+		proxy.WriteSocks5Status(conn, RepAddrTypeNotSupported)
 		log.Error().Err(err).Msg("failed to parse address")
 		return -1
 	}
 
-	dialer, err := nio.GetDialer(
-		username,
-		ip,
-		params[auth.ParamSession],
-		params[auth.ParamTimeout],
-		params[auth.ParamLocation],
-		params[auth.ParamFallback],
-	)
+	route, err := p.Router.Route(routing.RouteRequest{
+		Username: username,
+		TargetIP: target.IP,
+		Session:  params[auth.ParamSession],
+		Timeout:  parseTimeout(params[auth.ParamTimeout]),
+		Location: params[auth.ParamLocation],
+		Fallback: params[auth.ParamFallback],
+	})
 	if err != nil {
-		writeStatus(conn, RepGeneralFailure)
-		log.Error().Err(err).Msg("failed to get dialer")
+		p.Stats.DialFailuresTotal.Add(1)
+		proxy.WriteSocks5Status(conn, RepGeneralFailure)
+		log.Error().Err(err).Msg("failed to route")
 		return -1
 	}
 
-	destConn, err := dialer.Dial("tcp", ip+":"+strconv.Itoa(int(port)))
+	destConn, err := route.Dialer.Dial("tcp", target.Addr())
 	if err != nil {
-		writeStatus(conn, RepHostUnreachable)
+		p.Stats.DialFailuresTotal.Add(1)
+		proxy.WriteSocks5Status(conn, RepHostUnreachable)
 		log.Error().Err(err).Msg("failed to dial")
 		return -1
 	}
 	defer destConn.Close()
 
-	writeStatus(conn, RepSuccess)
-
-	return nio.CopyBidirectional(destConn, conn, time.Duration(config.Get().IdleTimeout)*time.Second)
+	proxy.WriteSocks5Status(conn, RepSuccess)
+	bytes := nio.CopyBidirectional(destConn, conn, time.Duration(p.Config.IdleTimeout)*time.Second)
+	p.Stats.BytesUp.Add(uint64(bytes))
+	return bytes
 }
 
-// writeStatus writes a standardized SOCKS5 reply to the client
-func writeStatus(conn net.Conn, reply byte) {
-	resp := []byte{
-		Version5, reply, 0x00, AtypIPv4,
-		0x00, 0x00, 0x00, 0x00, // Dummy IP
-		0x00, 0x00, // Dummy port
+// parseAtyp parses the address type and returns a Target.
+func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader) (proxy.Target, error) {
+	switch atyp {
+	case AtypIPv4:
+		addr := make([]byte, 6)
+		if _, err := io.ReadFull(buf, addr); err != nil {
+			return proxy.Target{}, fmt.Errorf("read IPv4: %w", err)
+		}
+		ip := netip.AddrFrom4([4]byte(addr[:4]))
+		port := binary.BigEndian.Uint16(addr[4:])
+		return proxy.Target{IP: ip, Port: port}, nil
+
+	case AtypDomain:
+		lenBuf := make([]byte, 1)
+		if _, err := io.ReadFull(buf, lenBuf); err != nil {
+			return proxy.Target{}, fmt.Errorf("read domain length: %w", err)
+		}
+		domainLen := int(lenBuf[0])
+		domainBuf := make([]byte, domainLen+2)
+		if _, err := io.ReadFull(buf, domainBuf); err != nil {
+			return proxy.Target{}, fmt.Errorf("read domain+port: %w", err)
+		}
+
+		host := string(domainBuf[:domainLen])
+		port := binary.BigEndian.Uint16(domainBuf[domainLen:])
+		ip, err := p.Resolver.Resolve(context.Background(), host)
+		if err != nil {
+			return proxy.Target{}, fmt.Errorf("resolve hostname: %w", err)
+		}
+		return proxy.Target{Host: host, IP: ip, Port: port}, nil
+
+	case AtypIPv6:
+		addr := make([]byte, 18)
+		if _, err := io.ReadFull(buf, addr); err != nil {
+			return proxy.Target{}, fmt.Errorf("read IPv6: %w", err)
+		}
+		ip := netip.AddrFrom16([16]byte(addr[:16]))
+		port := binary.BigEndian.Uint16(addr[16:])
+		return proxy.Target{IP: ip, Port: port}, nil
+
+	default:
+		return proxy.Target{}, fmt.Errorf("unsupported address type: %d", atyp)
 	}
-	conn.Write(resp)
 }
 
 // parseSocksAuth parses the username and password from the SOCKS5 authentication request
@@ -196,47 +236,4 @@ func parseSocksAuth(buf *bufio.Reader) (string, string, error) {
 	}
 
 	return string(ubuf), string(pbuf), nil
-}
-
-// parseAtyp parses the address type and returns the address and port
-func parseAtyp(atyp byte, buf *bufio.Reader) (string, uint16, error) {
-	switch atyp {
-	case AtypIPv4:
-		addr := make([]byte, 6)
-		if _, err := io.ReadFull(buf, addr); err != nil {
-			return "", 0, fmt.Errorf("read IPv4: %w", err)
-		}
-		return net.IP(addr[:4]).String(), binary.BigEndian.Uint16(addr[4:]), nil
-
-	case AtypDomain:
-		lenBuf := make([]byte, 1)
-		if _, err := io.ReadFull(buf, lenBuf); err != nil {
-			return "", 0, fmt.Errorf("read domain length: %w", err)
-		}
-		domainLen := int(lenBuf[0])
-		domainBuf := make([]byte, domainLen+2)
-		if _, err := io.ReadFull(buf, domainBuf); err != nil {
-			return "", 0, fmt.Errorf("read domain+port: %w", err)
-		}
-
-		host := string(domainBuf[:domainLen])
-		port := binary.BigEndian.Uint16(domainBuf[domainLen:])
-		ip, err := nio.ResolveHostname(host)
-		if err != nil {
-			return "", 0, fmt.Errorf("resolve hostname: %w", err)
-		}
-		return ip, port, nil
-
-	case AtypIPv6:
-		addr := make([]byte, 18)
-		if _, err := io.ReadFull(buf, addr); err != nil {
-			return "", 0, fmt.Errorf("read IPv6: %w", err)
-		}
-		ip := net.IP(addr[:16])
-		port := binary.BigEndian.Uint16(addr[16:])
-		return "[" + ip.String() + "]", port, nil
-
-	default:
-		return "", 0, fmt.Errorf("unsupported address type: %d", atyp)
-	}
 }
