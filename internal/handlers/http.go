@@ -3,6 +3,7 @@ package handlers
 import (
 	"bufio"
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"strconv"
@@ -68,7 +69,11 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 		if st != nil {
 			st.DialFailuresTotal.Add(1)
 		}
-		log.Error().Err(err).Msg("Error routing")
+		if errors.Is(err, routing.ErrAddressFamilyMismatch) {
+			log.Warn().Err(err).Msg("Error routing")
+		} else {
+			log.Error().Err(err).Msg("Error routing")
+		}
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
 	}

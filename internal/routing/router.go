@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -9,6 +10,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/vlourme/go-proxy/internal/utils"
 )
+
+// ErrAddressFamilyMismatch indicates the target and source IPs are of different
+// families and fallback is disabled or unavailable.
+var ErrAddressFamilyMismatch = errors.New("address family mismatch")
 
 // RouteRequest holds all parameters needed to select a source IP and dialer.
 type RouteRequest struct {
@@ -98,7 +103,7 @@ func (r *Router) Route(req RouteRequest) (RouteResult, error) {
 	// Fallback: if target family differs from source, use a fallback prefix.
 	if req.TargetIP.Is4() != source.Is4() {
 		if req.Fallback == "no" {
-			return RouteResult{}, fmt.Errorf("address family mismatch: target %s and source %s have different families, fallback disabled by request", req.TargetIP, source)
+			return RouteResult{}, fmt.Errorf("%w: target %s and source %s have different families, fallback disabled by request", ErrAddressFamilyMismatch, req.TargetIP, source)
 		}
 		if r.enableFallback && len(r.fallbackPrefixes) > 0 {
 			fallbackPrefix := r.fallbackPrefixes[utils.RandomInt(len(r.fallbackPrefixes))]
@@ -113,7 +118,7 @@ func (r *Router) Route(req RouteRequest) (RouteResult, error) {
 				Dialer:   newDialer(fallbackIP.AsSlice()),
 			}, nil
 		}
-		return RouteResult{}, fmt.Errorf("address family mismatch: target %s and source %s have different families; enable_fallback=%v fallback_prefixes=%d", req.TargetIP, source, r.enableFallback, len(r.fallbackPrefixes))
+		return RouteResult{}, fmt.Errorf("%w: target %s and source %s have different families; enable_fallback=%v fallback_prefixes=%d", ErrAddressFamilyMismatch, req.TargetIP, source, r.enableFallback, len(r.fallbackPrefixes))
 	}
 
 	return RouteResult{

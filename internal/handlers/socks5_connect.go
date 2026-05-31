@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -154,7 +155,11 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 			st.DialFailuresTotal.Add(1)
 		}
 		proxy.WriteSocks5Status(conn, RepGeneralFailure)
-		log.Error().Err(err).Msg("failed to route")
+		if errors.Is(err, routing.ErrAddressFamilyMismatch) {
+			log.Warn().Err(err).Msg("failed to route")
+		} else {
+			log.Error().Err(err).Msg("failed to route")
+		}
 		return -1
 	}
 

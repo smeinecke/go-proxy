@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
 	"time"
@@ -60,7 +61,11 @@ func (p *ProxyHandler) HandleTunneling(w net.Conn, r *http.Request, st *stats.St
 		if st != nil {
 			st.DialFailuresTotal.Add(1)
 		}
-		log.Error().Err(err).Msg("Error routing")
+		if errors.Is(err, routing.ErrAddressFamilyMismatch) {
+			log.Warn().Err(err).Msg("Error routing")
+		} else {
+			log.Error().Err(err).Msg("Error routing")
+		}
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
 	}
