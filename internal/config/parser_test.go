@@ -350,3 +350,29 @@ func TestValidateManagementEnabledDefaultListenAddress(t *testing.T) {
 		t.Fatalf("expected default listen_address 127.0.0.1, got %s", cfg.Management.ListenAddress)
 	}
 }
+
+func TestValidateLogLevelDefault(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("expected default log_level warn, got %s", cfg.LogLevel)
+	}
+}
+
+func TestValidateLogLevelInvalid(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		LogLevel:     "verbose",
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatal("expected error for invalid log_level, got nil")
+	}
+}

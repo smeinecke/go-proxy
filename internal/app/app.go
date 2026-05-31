@@ -145,6 +145,11 @@ func (a *App) Run(ctx context.Context) error {
 	if a.Config.DebugMode {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 	}
+	level, err := zerolog.ParseLevel(a.Config.LogLevel)
+	if err != nil {
+		level = zerolog.WarnLevel
+	}
+	zerolog.SetGlobalLevel(level)
 
 	sys.TuneSysctl()
 	for _, prefix := range a.Config.BindPrefixes {

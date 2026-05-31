@@ -6,6 +6,7 @@ network_type: "tcp6"
 max_timeout: 30 # session cache TTL in minutes
 idle_timeout: 30 # tunnel idle timeout in seconds
 enable_stats: true # disable to remove atomic counter overhead on the hot path
+log_level: "warn" # trace, debug, info, warn, error, fatal, panic. defaults to warn
 auth:
   type: "credentials"
   credentials:

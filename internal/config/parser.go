@@ -56,6 +56,9 @@ type Config struct {
 	// EnableStats controls whether atomic stats counters are updated on the hot path.
 	// Defaults to true when omitted.
 	EnableStats *bool `yaml:"enable_stats,omitempty"`
+	// LogLevel is the minimum log level: trace, debug, info, warn, error, fatal, panic.
+	// Defaults to "warn" when omitted.
+	LogLevel string `yaml:"log_level"`
 	// Auth is the authentication configuration.
 	Auth struct {
 		Type        AuthType `yaml:"type"`
@@ -285,6 +288,13 @@ func validate(cfg *Config) error {
 	if cfg.EnableStats == nil {
 		v := true
 		cfg.EnableStats = &v
+	}
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "warn"
+	}
+	validLevels := map[string]bool{"trace": true, "debug": true, "info": true, "warn": true, "error": true, "fatal": true, "panic": true}
+	if !validLevels[cfg.LogLevel] {
+		return fmt.Errorf("invalid log_level: %q (must be trace, debug, info, warn, error, fatal, panic)", cfg.LogLevel)
 	}
 
 	for _, cidr := range cfg.BlockedCIDRs {
