@@ -48,7 +48,7 @@ func buildProxyUsername(username, session, location, fallback string) string {
 }
 
 var (
-	sessionRegex = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
+	sessionRegex  = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,64}$`)
 )
 
