@@ -23,6 +23,7 @@ type Server struct {
 	stats        *stats.Container
 	sessionStore routing.SessionStore
 	router       *routing.Router
+	resolver     *routing.Resolver
 	version      string
 	commit       string
 	date         string
@@ -51,6 +52,11 @@ func (s *Server) SetSessionStore(store routing.SessionStore) {
 // SetRouter attaches a router to the management server.
 func (s *Server) SetRouter(r *routing.Router) {
 	s.router = r
+}
+
+// SetResolver attaches a resolver to the management server.
+func (s *Server) SetResolver(r *routing.Resolver) {
+	s.resolver = r
 }
 
 func (s *Server) buildRouter() http.Handler {

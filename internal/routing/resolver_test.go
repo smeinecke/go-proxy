@@ -33,7 +33,7 @@ func BenchmarkResolverBlockedCheck(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = resolver.isBlocked(ip)
+		_ = resolver.IsBlocked(ip)
 	}
 }
 
@@ -43,7 +43,7 @@ func BenchmarkResolverBlockedCheckMiss(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = resolver.isBlocked(ip)
+		_ = resolver.IsBlocked(ip)
 	}
 }
 

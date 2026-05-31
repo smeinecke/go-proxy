@@ -131,6 +131,7 @@ func New(cfg *config.Config, version, commit, date string) (*App, error) {
 		app.Management.SetStats(app.Stats)
 		app.Management.SetSessionStore(app.SessionStore)
 		app.Management.SetRouter(app.Router)
+		app.Management.SetResolver(app.Resolver)
 	}
 
 	return app, nil

@@ -99,14 +99,14 @@ func (r *Resolver) Resolve(ctx context.Context, host string) (netip.Addr, error)
 		return netip.Addr{}, ErrNoIPFound
 	}
 
-	if r.isBlocked(chosen) {
+	if r.IsBlocked(chosen) {
 		return netip.Addr{}, ErrBlocked
 	}
 
 	// Apply replacements
 	for _, rule := range r.replaces {
 		if rule.Prefix.Contains(chosen) {
-			if r.isBlocked(rule.IP) {
+			if r.IsBlocked(rule.IP) {
 				return netip.Addr{}, fmt.Errorf("replacement IP %s is blocked", rule.IP)
 			}
 			chosen = rule.IP
@@ -137,8 +137,8 @@ func (r *Resolver) lookupHost(ctx context.Context, host string) ([]string, error
 	return net.DefaultResolver.LookupHost(ctx, host)
 }
 
-// isBlocked checks if an IP is in any blocked prefix.
-func (r *Resolver) isBlocked(ip netip.Addr) bool {
+// IsBlocked checks if an IP is in any blocked prefix.
+func (r *Resolver) IsBlocked(ip netip.Addr) bool {
 	for _, p := range r.blocked {
 		if p.Contains(ip) {
 			return true

@@ -157,6 +157,55 @@ curl -H "Authorization: Bearer change-me" http://127.0.0.1:9090/api/v1/status
 - `GET /api/v1/status` - server status and version metadata
 - `GET /api/v1/config` - safe non-secret configuration values
 
+## Pre-created sessions for browsers
+
+Chrome and other browsers cannot send custom proxy headers. To bind a specific outgoing source IP for a browser session, pre-create the session through the Management API and then use the returned `proxy_username` as the normal proxy credential.
+
+### Creating a session
+
+```bash
+curl -X POST http://127.0.0.1:9090/api/v1/sessions \
+  -H "Authorization: Bearer change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "john",
+    "session": "abc123",
+    "source_ip": "2001:db8::1234",
+    "ttl_minutes": 30
+  }'
+```
+
+Response:
+```json
+{
+  "username": "john",
+  "session": "abc123",
+  "source_ip": "2001:db8::1234",
+  "location": "",
+  "fallback": "",
+  "proxy_username": "john-session-abc123",
+  "expires_at": "2026-05-31T20:00:00Z"
+}
+```
+
+### Using the session in Chrome
+
+Configure Chrome proxy credentials:
+- **username**: `john-session-abc123`
+- **password**: `<proxy password>`
+
+No custom headers are required. The proxy parses the session from the username and uses the pre-created source IP.
+
+### Rules
+
+- `source_ip` must be inside the configured proxy pools (`bind_prefixes`, `located_prefixes`, or `fallback_prefixes`).
+- The Management API is disabled by default.
+- The Management API must be bound to localhost or a private admin network.
+- If the session is omitted, a random 12-character session ID is generated automatically.
+- Pre-created sessions override random IP generation for that session key.
+- Existing random IPv6 rotation is unchanged when no pre-created session exists.
+- Duplicate sessions return `409 Conflict` unless `overwrite: true` is sent.
+
 ## Benchmarks
 
 ### Microbenchmarks
