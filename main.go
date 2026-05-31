@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/vlourme/go-proxy/internal/config"
 	"github.com/vlourme/go-proxy/internal/handlers"
+	"github.com/vlourme/go-proxy/internal/management"
 	"github.com/vlourme/go-proxy/internal/sys"
 )
 
@@ -57,6 +58,13 @@ func main() {
 				log.Error().Err(err).Msg("Failed to start server")
 			}
 		}()
+	}
+
+	if config.Management.Enabled {
+		mgmt := management.New(config, version, commit, date)
+		if err := mgmt.Start(); err != nil {
+			log.Fatal().Err(err).Msg("Failed to start management server")
+		}
 	}
 
 	log.Info().Int("count", runtime.NumCPU()).Str("address", addr.String()).Msg("Starting listeners")

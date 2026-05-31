@@ -28,6 +28,15 @@ type DNSConfig struct {
 	Timeout int      `yaml:"timeout"` // timeout in seconds
 }
 
+// ManagementConfig holds the management API settings.
+type ManagementConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	ListenAddress string `yaml:"listen_address"`
+	Port          int    `yaml:"port"`
+	Token         string `yaml:"token"`
+	AllowPublic   bool   `yaml:"allow_public"`
+}
+
 // Config is the configuration for the proxy.
 type Config struct {
 	// ListenAddress is the address to listen on.
@@ -71,6 +80,8 @@ type Config struct {
 	DNS DNSConfig `yaml:"dns"`
 	// BlockedCIDRs are extra CIDRs to block in addition to the default private ranges.
 	BlockedCIDRs []string `yaml:"blocked_cidrs"`
+	// Management is the management API configuration.
+	Management ManagementConfig `yaml:"management"`
 }
 
 var config *Config
@@ -275,6 +286,26 @@ func validate(cfg *Config) error {
 		}
 	}
 
+	if cfg.Management.Enabled {
+		if cfg.Management.Token == "" {
+			return errors.New("management.token must be set when management.enabled is true")
+		}
+		if cfg.Management.Port <= 0 || cfg.Management.Port > 65535 {
+			return fmt.Errorf("management.port must be between 1 and 65535, got %d", cfg.Management.Port)
+		}
+		if cfg.Management.ListenAddress == "" {
+			cfg.Management.ListenAddress = "127.0.0.1"
+		}
+		if net.ParseIP(cfg.Management.ListenAddress) == nil {
+			return fmt.Errorf("invalid management.listen_address: %q", cfg.Management.ListenAddress)
+		}
+		if !cfg.Management.AllowPublic {
+			if cfg.Management.ListenAddress == "0.0.0.0" || cfg.Management.ListenAddress == "::" {
+				return errors.New("management.listen_address must not be 0.0.0.0 or :: unless management.allow_public is true")
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -290,6 +321,58 @@ func Get() *Config {
 	}
 
 	return config
+}
+
+// SetTestConfig sets the global config and populates derived globals for integration tests.
+func SetTestConfig(cfg *Config) error {
+	if err := validate(cfg); err != nil {
+		return err
+	}
+
+	bindPrefixes = []net.IPNet{}
+	for _, prefix := range cfg.BindPrefixes {
+		_, ipnet, _ := net.ParseCIDR(prefix)
+		if ipnet != nil {
+			bindPrefixes = append(bindPrefixes, *ipnet)
+		}
+	}
+
+	fallbackPrefixes = []net.IPNet{}
+	for _, prefix := range cfg.FallbackPrefixes {
+		_, ipnet, _ := net.ParseCIDR(prefix)
+		if ipnet != nil {
+			fallbackPrefixes = append(fallbackPrefixes, *ipnet)
+		}
+	}
+
+	locatedPrefixes = map[string][]net.IPNet{}
+	for location, prefixes := range cfg.LocatedPrefixes {
+		for _, prefix := range prefixes {
+			_, ipnet, _ := net.ParseCIDR(prefix)
+			if ipnet != nil {
+				locatedPrefixes[location] = append(locatedPrefixes[location], *ipnet)
+			}
+		}
+	}
+
+	replaceIPs = map[*net.IPNet]string{}
+	for cidr, ip := range cfg.ReplaceIPs {
+		_, ipnet, _ := net.ParseCIDR(cidr)
+		if ipnet != nil {
+			replaceIPs[ipnet] = ip
+		}
+	}
+
+	blockedNets = []net.IPNet{}
+	for _, cidr := range cfg.BlockedCIDRs {
+		_, ipnet, _ := net.ParseCIDR(cidr)
+		if ipnet != nil {
+			blockedNets = append(blockedNets, *ipnet)
+		}
+	}
+
+	config = cfg
+	return nil
 }
 
 // GetBindPrefixes returns the bind prefixes

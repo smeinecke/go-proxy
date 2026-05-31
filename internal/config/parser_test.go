@@ -251,3 +251,102 @@ func TestValidateCustomDNSMissingServers(t *testing.T) {
 		t.Fatalf("expected error for custom DNS without servers")
 	}
 }
+
+func TestValidateManagementDisabledEmptyTokenOK(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: false},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected no error when management is disabled with empty token, got %v", err)
+	}
+}
+
+func TestValidateManagementEnabledMissingToken(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Port: 9090},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatalf("expected error when management.enabled is true with empty token")
+	}
+}
+
+func TestValidateManagementEnabledInvalidPort(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 0},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatalf("expected error for invalid management port")
+	}
+}
+
+func TestValidateManagementEnabledInvalidListenAddress(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 9090, ListenAddress: "not-an-ip"},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatalf("expected error for invalid management.listen_address")
+	}
+}
+
+func TestValidateManagementEnabledPublicBindRejected(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 9090, ListenAddress: "0.0.0.0"},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatalf("expected error for public bind without allow_public")
+	}
+}
+
+func TestValidateManagementEnabledIPv6PublicBindRejected(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 9090, ListenAddress: "::"},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatalf("expected error for public bind without allow_public")
+	}
+}
+
+func TestValidateManagementEnabledLocalhostOK(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 9090, ListenAddress: "127.0.0.1"},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected no error for valid localhost config, got %v", err)
+	}
+}
+
+func TestValidateManagementEnabledDefaultListenAddress(t *testing.T) {
+	cfg := &Config{
+		ListenPort:   8080,
+		BindPrefixes: []string{"2001:db8::/48"},
+		Auth:         authNone(),
+		Management:   ManagementConfig{Enabled: true, Token: "secret", Port: 9090},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.Management.ListenAddress != "127.0.0.1" {
+		t.Fatalf("expected default listen_address 127.0.0.1, got %s", cfg.Management.ListenAddress)
+	}
+}

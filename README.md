@@ -19,7 +19,7 @@ A configurable proxy server in Go, supporting rotating IPv4/IPv6 addresses, sess
 ### Prerequisites
 
 - [Go](https://golang.org/dl/)
-- Server with IPv6 support and large-enough subnet ([Hetzner](https://hetzner.cloud/?ref=BV2rohR8OBWQ) offers /64 subnets, *sponsored link*).
+- Server with IPv6 support and large-enough subnet.
 
 ### Configuration
 
@@ -117,6 +117,45 @@ replace_ips:
 
 If you're domain resolve to `1.2.3.4`, it will be replaced with `2a14:dead:beef::` by the proxy.
 
+
+## Management API
+
+The management API is an optional authenticated HTTP API for monitoring and administration. It is **disabled by default** and runs on a separate port from the proxy.
+
+### Configuration
+
+```yaml
+management:
+  enabled: false
+  listen_address: "127.0.0.1"
+  port: 9090
+  token: "change-me"
+```
+
+- `enabled`: whether the management API is started (`false` by default)
+- `listen_address`: address to bind the management server (`127.0.0.1` by default)
+- `port`: port to listen on
+- `token`: Bearer token required for authentication
+
+**Security notes:**
+- The management API is disabled by default.
+- It runs on a separate port from the proxy.
+- A token is required when enabled.
+- By default, binding to `0.0.0.0` or `::` is rejected. Set `allow_public: true` to override.
+- It should be bound to localhost or a private admin network.
+- It is not intended to be exposed publicly without additional protection.
+
+### Example request
+
+```bash
+curl -H "Authorization: Bearer change-me" http://127.0.0.1:9090/api/v1/status
+```
+
+### Endpoints
+
+- `GET /healthz` - health check (requires authentication)
+- `GET /api/v1/status` - server status and version metadata
+- `GET /api/v1/config` - safe non-secret configuration values
 
 ## Benchmark
 
