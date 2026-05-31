@@ -53,6 +53,9 @@ type Config struct {
 	MaxTimeout int `yaml:"max_timeout"`
 	// IdleTimeout is the idle timeout for a tunnel in seconds.
 	IdleTimeout int `yaml:"idle_timeout"`
+	// EnableStats controls whether atomic stats counters are updated on the hot path.
+	// Defaults to true when omitted.
+	EnableStats *bool `yaml:"enable_stats,omitempty"`
 	// Auth is the authentication configuration.
 	Auth struct {
 		Type        AuthType `yaml:"type"`
@@ -278,6 +281,10 @@ func validate(cfg *Config) error {
 	}
 	if cfg.DNS.Timeout <= 0 {
 		cfg.DNS.Timeout = 5
+	}
+	if cfg.EnableStats == nil {
+		v := true
+		cfg.EnableStats = &v
 	}
 
 	for _, cidr := range cfg.BlockedCIDRs {

@@ -21,7 +21,9 @@ import (
 func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request, st *stats.Stats) int64 {
 	username, password, encodedParams := auth.GetCredentials(r)
 	if !p.Authenticator.Verify(username, password) {
-		st.AuthFailuresTotal.Add(1)
+		if st != nil {
+			st.AuthFailuresTotal.Add(1)
+		}
 		log.Error().Msg("Invalid credentials")
 		proxy.WriteAuthRequired(w)
 		return -1
@@ -43,10 +45,12 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	host := string(r.Host)
 	ip, err := p.Resolver.Resolve(context.Background(), host)
 	if err != nil {
-		if err == routing.ErrBlocked {
-			st.BlockedTotal.Add(1)
+		if st != nil {
+			if err == routing.ErrBlocked {
+				st.BlockedTotal.Add(1)
+			}
+			st.DNSFailuresTotal.Add(1)
 		}
-		st.DNSFailuresTotal.Add(1)
 		log.Error().Err(err).Str("host", host).Msg("Error resolving hostname")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -61,7 +65,9 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 		Fallback: params[auth.ParamFallback],
 	})
 	if err != nil {
-		st.DialFailuresTotal.Add(1)
+		if st != nil {
+			st.DialFailuresTotal.Add(1)
+		}
 		log.Error().Err(err).Msg("Error routing")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -69,7 +75,9 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 
 	destConn, err := route.Dialer.Dial("tcp", net.JoinHostPort(ip.String(), strconv.Itoa(port)))
 	if err != nil {
-		st.DialFailuresTotal.Add(1)
+		if st != nil {
+			st.DialFailuresTotal.Add(1)
+		}
 		log.Error().Err(err).Msg("Error dialing")
 		proxy.WriteError(w, 500, "Internal Server Error")
 		return -1
@@ -84,7 +92,9 @@ func (p *ProxyHandler) HandleHTTP(w net.Conn, buf *bufio.Reader, r *http.Request
 	}
 
 	bytes := nio.CopyBidirectional(w, destConn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	st.BytesTotal.Add(uint64(bytes))
+	if st != nil {
+		st.BytesTotal.Add(uint64(bytes))
+	}
 	return bytes
 }
 

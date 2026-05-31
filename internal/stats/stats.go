@@ -25,23 +25,29 @@ func NewContainer(numShards int) *Container {
 }
 
 // Shard returns the stats shard for the given worker index.
+// Returns nil when stats are disabled (c is nil or has no shards).
 func (c *Container) Shard(idx int) *Stats {
+	if c == nil || len(c.shards) == 0 {
+		return nil
+	}
 	return &c.shards[idx%len(c.shards)]
 }
 
 // Snapshot returns the summed values of all shards.
 func (c *Container) Snapshot() map[string]uint64 {
 	var requests, connect, httpReqs, authFail, dnsFail, blocked, dialFail, bytesTotal uint64
-	for i := range c.shards {
-		s := &c.shards[i]
-		requests += s.RequestsTotal.Load()
-		connect += s.ConnectTotal.Load()
-		httpReqs += s.HTTPRequestsTotal.Load()
-		authFail += s.AuthFailuresTotal.Load()
-		dnsFail += s.DNSFailuresTotal.Load()
-		blocked += s.BlockedTotal.Load()
-		dialFail += s.DialFailuresTotal.Load()
-		bytesTotal += s.BytesTotal.Load()
+	if c != nil {
+		for i := range c.shards {
+			s := &c.shards[i]
+			requests += s.RequestsTotal.Load()
+			connect += s.ConnectTotal.Load()
+			httpReqs += s.HTTPRequestsTotal.Load()
+			authFail += s.AuthFailuresTotal.Load()
+			dnsFail += s.DNSFailuresTotal.Load()
+			blocked += s.BlockedTotal.Load()
+			dialFail += s.DialFailuresTotal.Load()
+			bytesTotal += s.BytesTotal.Load()
+		}
 	}
 	return map[string]uint64{
 		"requests_total":      requests,

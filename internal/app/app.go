@@ -120,10 +120,13 @@ func New(cfg *config.Config, version, commit, date string) (*App, error) {
 		Router:        router,
 		Resolver:      resolver,
 		SessionStore:  sessionStore,
-		Stats:         stats.NewContainer(runtime.NumCPU()),
 		version:       version,
 		commit:        commit,
 		date:          date,
+	}
+
+	if *cfg.EnableStats {
+		app.Stats = stats.NewContainer(runtime.NumCPU())
 	}
 
 	if cfg.Management.Enabled {

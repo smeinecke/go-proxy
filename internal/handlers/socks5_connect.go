@@ -117,7 +117,9 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 
 	username, paramStr := auth.SplitParams(username)
 	if !p.Authenticator.Verify(username, password) {
-		st.AuthFailuresTotal.Add(1)
+		if st != nil {
+			st.AuthFailuresTotal.Add(1)
+		}
 		conn.Write([]byte{0x01, 0x01})
 		log.Error().Msg("failed to verify auth")
 		return -1
@@ -148,7 +150,9 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 		Fallback: params[auth.ParamFallback],
 	})
 	if err != nil {
-		st.DialFailuresTotal.Add(1)
+		if st != nil {
+			st.DialFailuresTotal.Add(1)
+		}
 		proxy.WriteSocks5Status(conn, RepGeneralFailure)
 		log.Error().Err(err).Msg("failed to route")
 		return -1
@@ -156,7 +160,9 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 
 	destConn, err := route.Dialer.Dial("tcp", target.Addr())
 	if err != nil {
-		st.DialFailuresTotal.Add(1)
+		if st != nil {
+			st.DialFailuresTotal.Add(1)
+		}
 		proxy.WriteSocks5Status(conn, RepHostUnreachable)
 		log.Error().Err(err).Msg("failed to dial")
 		return -1
@@ -165,7 +171,9 @@ func (p *ProxyHandler) HandleSocks5(conn net.Conn, buf *bufio.Reader, st *stats.
 
 	proxy.WriteSocks5Status(conn, RepSuccess)
 	bytes := nio.CopyBidirectional(destConn, conn, time.Duration(p.Config.IdleTimeout)*time.Second)
-	st.BytesTotal.Add(uint64(bytes))
+	if st != nil {
+		st.BytesTotal.Add(uint64(bytes))
+	}
 	return bytes
 }
 
@@ -196,7 +204,7 @@ func (p *ProxyHandler) parseAtyp(atyp byte, buf *bufio.Reader, st *stats.Stats) 
 		port := binary.BigEndian.Uint16(domainBuf[domainLen:])
 		ip, err := p.Resolver.Resolve(context.Background(), host)
 		if err != nil {
-			if err == routing.ErrBlocked {
+			if st != nil && err == routing.ErrBlocked {
 				st.BlockedTotal.Add(1)
 			}
 			return proxy.Target{}, fmt.Errorf("resolve hostname: %w", err)

@@ -13,7 +13,9 @@ import (
 func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 	defer conn.Close()
 	st := p.Stats.Shard(workerId)
-	st.RequestsTotal.Add(1)
+	if st != nil {
+		st.RequestsTotal.Add(1)
+	}
 
 	reader := bufio.NewReader(conn)
 
@@ -35,10 +37,14 @@ func (p *ProxyHandler) HandleConnection(workerId int, conn net.Conn) {
 
 		var written int64
 		if string(req.Method) == http.MethodConnect {
-			st.ConnectTotal.Add(1)
+			if st != nil {
+				st.ConnectTotal.Add(1)
+			}
 			written = p.HandleTunneling(conn, req, st)
 		} else {
-			st.HTTPRequestsTotal.Add(1)
+			if st != nil {
+				st.HTTPRequestsTotal.Add(1)
+			}
 			written = p.HandleHTTP(conn, reader, req, st)
 		}
 
