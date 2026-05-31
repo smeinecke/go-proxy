@@ -541,6 +541,50 @@ func TestSessionsUsernameEmptyWhitespace(t *testing.T) {
 	}
 }
 
+func TestSessionsUsernameTrimmed(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "  john  ", "source_ip": "2001:db8::1", "session": "abc123456"}`)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if result["username"] != "john" {
+		t.Fatalf("expected trimmed username john, got %v", result["username"])
+	}
+}
+
+func TestSessionsFallbackTypo(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john", "source_ip": "2001:db8::1", "session": "abc123456", "fallback": "n0"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionsFallbackYes(t *testing.T) {
+	s := newTestServerWithRouter()
+	resp := postSessions(t, s, `{"username": "john", "source_ip": "2001:db8::1", "session": "abc123456", "fallback": "yes"}`)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if result["fallback"] != "yes" {
+		t.Fatalf("expected fallback yes, got %v", result["fallback"])
+	}
+	expected := "john-session-abc123456-fallback-yes"
+	if result["proxy_username"] != expected {
+		t.Fatalf("expected proxy_username %s, got %v", expected, result["proxy_username"])
+	}
+}
+
 func TestSessionsBracketedIPv6(t *testing.T) {
 	s := newTestServerWithRouter()
 	resp := postSessions(t, s, `{"username": "john", "source_ip": "[2001:db8::1]", "session": "abc123456"}`)

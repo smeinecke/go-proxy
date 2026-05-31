@@ -47,7 +47,14 @@ func buildProxyUsername(username, session, location, fallback string) string {
 	return result
 }
 
-var sessionRegex = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
+var (
+	sessionRegex = regexp.MustCompile(`^[a-zA-Z0-9]{6,24}$`)
+	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,64}$`)
+)
+
+func validFallback(v string) bool {
+	return v == "" || v == "no" || v == "yes"
+}
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -138,12 +145,18 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// Normalize bracketed IPv6
 	req.SourceIP = strings.Trim(req.SourceIP, "[]")
 
-	if req.Username == "" || strings.TrimSpace(req.Username) == "" {
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
 		writeError(w, http.StatusBadRequest, "bad_request", "username is required")
 		return
 	}
-	if strings.ContainsAny(req.Username, "-:") {
-		writeError(w, http.StatusBadRequest, "bad_request", "username must not contain '-' or ':'")
+	if !usernameRegex.MatchString(req.Username) {
+		writeError(w, http.StatusBadRequest, "bad_request", "username must match ^[a-zA-Z0-9_.]{1,64}$")
+		return
+	}
+
+	if !validFallback(req.Fallback) {
+		writeError(w, http.StatusBadRequest, "bad_request", "fallback must be 'no' or 'yes'")
 		return
 	}
 

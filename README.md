@@ -182,19 +182,19 @@ Response:
   "session": "abc123",
   "source_ip": "2001:db8::1234",
   "location": "",
-  "fallback": "",
-  "proxy_username": "john-session-abc123",
+  "fallback": "no",
+  "proxy_username": "john-session-abc123-fallback-no",
   "expires_at": "2026-05-31T20:00:00Z"
 }
 ```
 
 ### Using the session in Chrome
 
-Configure Chrome proxy credentials:
-- **username**: `john-session-abc123`
+Configure Chrome proxy credentials using the exact `proxy_username` returned by the API:
+- **username**: `john-session-abc123-fallback-no`
 - **password**: `<proxy password>`
 
-No custom headers are required. The proxy parses the session from the username and uses the pre-created source IP.
+No custom headers are required. The proxy parses the session from the username and uses the pre-created source IP. Always use the returned `proxy_username` verbatim.
 
 ### Rules
 
@@ -205,6 +205,7 @@ No custom headers are required. The proxy parses the session from the username a
 - Pre-created sessions override random IP generation for that session key.
 - Existing random IPv6 rotation is unchanged when no pre-created session exists.
 - Duplicate sessions return `409 Conflict` unless `overwrite: true` is sent.
+- Pre-created sessions default `fallback` to `no` for exact-IP semantics. The only accepted values are `no` and `yes`.
 
 ## Benchmarks
 
