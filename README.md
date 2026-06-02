@@ -130,20 +130,14 @@ management:
   listen_address: "127.0.0.1"
   port: 9090
   token: "change-me"
+  allow_public: false
 ```
 
 - `enabled`: whether the management API is started (`false` by default)
 - `listen_address`: address to bind the management server (`127.0.0.1` by default)
 - `port`: port to listen on
 - `token`: Bearer token required for authentication
-
-**Security notes:**
-- The management API is disabled by default.
-- It runs on a separate port from the proxy.
-- A token is required when enabled.
-- By default, binding to `0.0.0.0` or `::` is rejected. Set `allow_public: true` to override.
-- It should be bound to localhost or a private admin network.
-- It is not intended to be exposed publicly without additional protection.
+- `allow_public`: set to `true` to allow binding to `0.0.0.0` or `::` (rejected by default)
 
 ### Example request
 
@@ -156,6 +150,8 @@ curl -H "Authorization: Bearer change-me" http://127.0.0.1:9090/api/v1/status
 - `GET /healthz` - health check (requires authentication)
 - `GET /api/v1/status` - server status and version metadata
 - `GET /api/v1/config` - safe non-secret configuration values
+- `GET /api/v1/stats` - request/connection statistics
+- `POST /api/v1/sessions` - create a pre-configured session with a fixed source IP
 
 ## Pre-created sessions for browsers
 
@@ -199,8 +195,6 @@ No custom headers are required. The proxy parses the session from the username a
 ### Rules
 
 - `source_ip` must be inside the configured proxy pools (`bind_prefixes`, `located_prefixes`, or `fallback_prefixes`).
-- The Management API is disabled by default.
-- The Management API must be bound to localhost or a private admin network.
 - If the session is omitted, a random 12-character session ID is generated automatically.
 - Pre-created sessions override random IP generation for that session key.
 - Existing random IPv6 rotation is unchanged when no pre-created session exists.
